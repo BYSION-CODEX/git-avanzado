@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HandPose diagnostic</title>
+<style>
+  body { font: 13px/1.5 monospace; background: #111; color: #ddd; margin: 0; padding: 16px; }
+  h1 { font-size: 16px; margin: 0 0 12px; color: #fff; }
+  #log { background: #000; border: 1px solid #333; padding: 12px; min-height: 320px; white-space: pre-wrap; }
+  #cam { position: fixed; right: 16px; bottom: 16px; width: 320px; border: 1px solid #444; }
+  button { font: inherit; background: #222; color: #eee; border: 1px solid #555; padding: 6px 12px; margin-right: 8px; cursor: pointer; }
+  button:hover { background: #333; }
+</style>
+</head>
+<body>
+<h1>HandPose diagnostic — no p5, no app code</h1>
+<div>
+  <button id="run-tfjs">run with tfjs</button>
+  <button id="run-mediapipe">run with mediapipe</button>
+  <button id="clear">clear log</button>
+</div>
+<pre id="log"></pre>
+<video id="cam" autoplay muted playsinline></video>
+
+<script src="https://unpkg.com/ml5@1.4.0/dist/ml5.min.js"></script>
+<script>
+const logEl = document.getElementById("log");
+const cam = document.getElementById("cam");
+const lines = [];
+
+function log(message) {
+  lines.push(`${new Date().toISOString().slice(11, 23)}  ${message}`);
+  if (lines.length > 60) lines.shift();
+  logEl.textContent = lines.join("\n");
+}
+
+document.getElementById("clear").addEventListener("click", () => {
+  lines.length = 0;
+  logEl.textContent = "";
+});
+
+const state = { model: null, frames: 0, hands: 0, lastError: null, lastResultAt: 0, runtime: null };
+
+log(`ml5 is ${typeof ml5}, ml5.version = ${ml5?.version}`);
+
+async function startCamera() {
+  if (cam.srcObject) return true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480 },
+      audio: false,
+    });
+    cam.srcObject = stream;
+    await cam.play();
+    log(`camera OK ${cam.videoWidth}x${cam.videoHeight} readyState=${cam.readyState} paused=${cam.paused}`);
+    return true;
+  } catch (error) {
+    log(`CAMERA ERROR ${error.name}: ${error.message}`);
+    return false;
+  }
+}
+
+async function run(runtime) {
+  lines.length = 0;
+  if (state.pump) clearInterval(state.pump);
+  state.runtime = runtime;
+  state.frames = 0;
+  state.hands = 0;
+  state.lastError = null;
+  state.lastResultAt = 0;
+  state.lastLoggedHands = -1;
+
+  log(`--- starting with runtime="${runtime}" ---`);
+
+  if (!(await startCamera())) return;
+
+  const started = performance.now();
+  try {
+    state.model = ml5.handPose({ maxHands: 2, runtime });
+    log(`factory returned ${Object.prototype.toString.call(state.model)}`);
+    log("awaiting model.ready ...");
+    await state.model.ready;
+    log(`model ready in ${Math.round(performance.now() - started)}ms`);
+  } catch (error) {
+    log(`MODEL ERROR ${error?.name}: ${error?.message ?? error}`);
+    return;
+  }
+
+  if (typeof state.model.detectStart !== "function") {
+    log(`model has no detectStart; keys=[${Object.keys(state.model).join(",")}]`);
+    return;
+  }
+
+  // Feed a 2d canvas drawn from the video instead of the video element:
+  // fromPixels(video) can return all-zero pixels on some backends.
+  const source = document.createElement("canvas");
+  const ctx = source.getContext("2d", { willReadFrequently: true });
+  const pump = setInterval(() => {
+    const w = cam.videoWidth;
+    const h = cam.videoHeight;
+    if (!w || !h) return;
+    if (source.width !== w || source.height !== h) {
+      source.width = w;
+      source.height = h;
+    }
+    ctx.drawImage(cam, 0, 0, w, h);
+  }, 16);
+
+  state.pump = pump;
+
+  const detectOnce = async () => {
+    while (state.runtime === runtime) {
+      try {
+        const hands = await state.model.detect(source);
+        state.frames += 1;
+        state.hands = hands.length;
+        state.lastResultAt = performance.now();
+        if (state.frames === 1 || (hands.length > 0 && state.lastLoggedHands !== hands.length)) {
+          state.lastLoggedHands = hands.length;
+          log(`result #${state.frames}: hands=${hands.length}` +
+            (hands.length ? ` first=${JSON.stringify(hands[0].keypoints?.[0])}` : ""));
+        }
+      } catch (error) {
+        state.lastError = error;
+        log(`DETECT ERROR ${error?.name}: ${error?.message ?? error}`);
+        break;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  };
+
+  detectOnce();
+  log("detect loop started on canvas input; waiting for results...");
+}
+
+document.getElementById("run-tfjs").addEventListener("click", () => run("tfjs"));
+document.getElementById("run-mediapipe").addEventListener("click", () => run("mediapipe"));
+
+setInterval(() => {
+  const age = state.lastResultAt ? Math.round(performance.now() - state.lastResultAt) : null;
+  const status = [
+    `runtime=${state.runtime ?? "-"}`,
+    `frames=${state.frames}`,
+    `hands=${state.hands}`,
+    `lastResult=${age === null ? "-" : age + "ms ago"}`,
+    `video=${cam.videoWidth}x${cam.videoHeight}`,
+    `readyState=${cam.readyState}`,
+    `paused=${cam.paused}`,
+  ].join("  ");
+  document.title = `handPose ${state.hands} hands`;
+  if (status !== window.__lastStatus) {
+    window.__lastStatus = status;
+    log(`[status] ${status}`);
+  }
+}, 2000);
+</script>
+</body>
+</html>
