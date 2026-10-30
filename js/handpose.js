@@ -43,8 +43,19 @@ class HandTracker {
     // "canvas" feeds a 2d canvas drawn from the video (deterministic pixels).
     // "video" feeds the video element directly; kept only for A/B debugging.
     this.inputMode = options.input ?? "canvas";
+    // Model input is downscaled: the detector resizes to ~224px internally, so
+    // uploading a full 640x480 texture every frame only costs time.
+    this.inputMaxWidth = options.inputMaxWidth ?? 480;
+    // Inference is far more expensive than drawing; no point running it above
+    // the display rate. 30 Hz looks continuous and halves the CPU/GPU load.
+    this.detectFps = options.detectFps ?? 30;
     this._inputCanvas = null;
     this._inputCtx = null;
+    this._inputWidth = 0;
+    this._inputHeight = 0;
+    this._lastDetectAt = 0;
+    this._points = [];
+    this._colors = null;
 
     this.style = {
       leftHand: "#4cc9f0",
@@ -147,14 +158,20 @@ class HandTracker {
     this._running = true;
 
     const loop = async () => {
+      const minInterval = 1000 / this.detectFps;
+
       while (this._running) {
-        try {
-          const hands = await this.model.detect(this._inputSource());
-          this._handleResults(hands);
-        } catch (error) {
-          this.error = `Detection failed: ${error?.message ?? error}`;
-          this._running = false;
-          break;
+        const now = performance.now();
+        if (now - this._lastDetectAt >= minInterval) {
+          this._lastDetectAt = now;
+          try {
+            const hands = await this.model.detect(this._inputSource());
+            this._handleResults(hands);
+          } catch (error) {
+            this.error = `Detection failed: ${error?.message ?? error}`;
+            this._running = false;
+            break;
+          }
         }
         await new Promise((resolve) => requestAnimationFrame(resolve));
       }
@@ -170,11 +187,19 @@ class HandTracker {
    * empty array frame after frame.
    */
   _inputSource() {
-    if (this.inputMode !== "canvas") return this.video;
+    const videoWidth = this.video?.videoWidth ?? 0;
+    const videoHeight = this.video?.videoHeight ?? 0;
+    if (!videoWidth || !videoHeight) return this.video;
 
-    const width = this.video?.videoWidth ?? 0;
-    const height = this.video?.videoHeight ?? 0;
-    if (!width || !height) return this.video;
+    if (this.inputMode !== "canvas") {
+      this._inputWidth = videoWidth;
+      this._inputHeight = videoHeight;
+      return this.video;
+    }
+
+    const scale = Math.min(1, this.inputMaxWidth / videoWidth);
+    const width = Math.round(videoWidth * scale);
+    const height = Math.round(videoHeight * scale);
 
     if (!this._inputCanvas) {
       this._inputCanvas = document.createElement("canvas");
@@ -186,6 +211,8 @@ class HandTracker {
       this._inputCanvas.height = height;
     }
 
+    this._inputWidth = width;
+    this._inputHeight = height;
     this._inputCtx.drawImage(this.video, 0, 0, width, height);
     return this._inputCanvas;
   }
@@ -250,11 +277,12 @@ class HandTracker {
 
     for (const hand of this.frame.hands) {
       const color = this._colorFor(hand.handedness);
-      const points = hand.keypoints.map((keypoint) => mapPointToCanvas(keypoint, viewport));
+      const points = this._mapPoints(hand, viewport);
 
       stroke(color);
       strokeWeight(this.style.boneWeight);
-      for (const [from, to] of HandTracker.CONNECTIONS) {
+      for (let i = 0; i < HandTracker.CONNECTIONS.length; i += 1) {
+        const [from, to] = HandTracker.CONNECTIONS[i];
         const a = points[from];
         const b = points[to];
         if (!a || !b) continue;
@@ -263,12 +291,31 @@ class HandTracker {
 
       noStroke();
       fill(color);
-      for (const point of points) {
-        circle(point.x, point.y, this.style.jointRadius * 2);
+      const diameter = this.style.jointRadius * 2;
+      for (let i = 0; i < points.length; i += 1) {
+        circle(points[i].x, points[i].y, diameter);
       }
     }
 
     pop();
+  }
+
+  /** Map keypoints into canvas space reusing one buffer: no per-frame garbage. */
+  _mapPoints(hand, viewport) {
+    const buffer = this._points;
+    const keypoints = hand.keypoints;
+
+    while (buffer.length < keypoints.length) buffer.push({ x: 0, y: 0 });
+
+    for (let i = 0; i < keypoints.length; i += 1) {
+      const keypoint = keypoints[i];
+      const point = buffer[i];
+      point.x = viewport.offsetX + keypoint.x * viewport.drawWidth;
+      point.y = viewport.offsetY + keypoint.y * viewport.drawHeight;
+    }
+
+    buffer.length = keypoints.length;
+    return buffer;
   }
 
   stop() {
@@ -329,17 +376,19 @@ class HandTracker {
   }
 
   _handleResults(hands) {
-    const videoWidth = this.video?.videoWidth || 640;
-    const videoHeight = this.video?.videoHeight || 480;
+    // Keypoints come back in the coordinate space of whatever was fed to the
+    // model: the downscaled input canvas, not the raw camera resolution.
+    const width = this._inputWidth || this.video?.videoWidth || 640;
+    const height = this._inputHeight || this.video?.videoHeight || 480;
 
     const mapped = (hands ?? []).map((hand, index) => ({
       index,
       handedness: this._mirrorHandedness(hand.handedness),
       confidence: typeof hand.confidence === "number" ? hand.confidence : 1,
       keypoints: (hand.keypoints ?? []).map((keypoint) => ({
-        x: this.mirror ? 1 - keypoint.x / videoWidth : keypoint.x / videoWidth,
-        y: keypoint.y / videoHeight,
-        z: (keypoint.z ?? 0) / videoWidth,
+        x: this.mirror ? 1 - keypoint.x / width : keypoint.x / width,
+        y: keypoint.y / height,
+        z: (keypoint.z ?? 0) / width,
       })),
     }));
 
@@ -357,8 +406,15 @@ class HandTracker {
   }
 
   _colorFor(handedness) {
-    if (handedness === "Left") return this.style.leftHand;
-    if (handedness === "Right") return this.style.rightHand;
-    return this.style.unknownHand;
+    if (!this._colors) {
+      this._colors = {
+        left: color(this.style.leftHand),
+        right: color(this.style.rightHand),
+        unknown: color(this.style.unknownHand),
+      };
+    }
+    if (handedness === "Left") return this._colors.left;
+    if (handedness === "Right") return this._colors.right;
+    return this._colors.unknown;
   }
 }

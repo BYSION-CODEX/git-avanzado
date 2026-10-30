@@ -30,6 +30,8 @@ Three people own three modules in parallel. One shared contract, one wiring file
 - `detectStart(video, cb)` pushes results on its own; `draw()` must tolerate running before init resolves (it renders loading text, and a separate "waiting for camera frames" state when the model is loaded but silent).
 - The camera `<video>` stays in the DOM, off-screen and transparent — not `display:none`, not detached, because some browsers stop producing frames without a render surface. The image itself is never drawn.
 - ml5 results give 21 `keypoints` in MediaPipe order; `HandTracker.CONNECTIONS` encodes the bones. Adding a landmark consumer means using `HAND_LANDMARKS` from `contracts.js`, not magic indices.
+- Performance knobs live on `HandTracker`: `detectFps` (default 30), `inputMaxWidth` (default 480, model input is downscaled), `input: "canvas" | "video"`. Keypoints are normalized against the **input canvas** size (`_inputWidth`/`_inputHeight`), not `videoWidth` — changing `inputMaxWidth` without that normalization silently shifts the skeleton.
+- `sketch.js` calls `pixelDensity(1)`; removing it quadruples fill cost on high-DPI screens.
 - Commit messages in this repo are in Spanish (e.g. "Se creó la estructura de archivos"); match that language.
 
 ## Branching

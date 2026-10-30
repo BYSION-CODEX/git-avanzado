@@ -10,6 +10,9 @@ let showDebug = true;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  // Render at CSS pixels: on high-DPI screens the default doubles the framebuffer,
+  // which quadruples fill cost for a full-screen background every frame.
+  pixelDensity(1);
 
   handTracker = new HandTracker({ maxHands: 2 });
   game = new GameLogic();
