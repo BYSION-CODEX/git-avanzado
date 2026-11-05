@@ -195,6 +195,90 @@ orden correcto y documentarlo acá.
 - Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
   0.20 → 100%, y el mapeo es monótono en toda la banda.
 
+### Florecimiento
+
+- **Estado separado del crecimiento**: `florecimiento` (0..1) depende solo de
+  que haya una mano abierta (`mano.gesto.estado === 'abierta'`). Abrir o cerrar
+  la mano **no toca** `crecimiento` ni `objetivo`: la altura se conserva.
+- Sin mano abierta el objetivo de floración vuelve a 0, así que los pétalos se
+  cierran progresivamente (también al hacer puño).
+- `VELOCIDAD_FLORACION` (2.6) es menor que `VELOCIDAD_CRECIMIENTO` (4.5): las
+  flores abren más lento que el crecimiento, y se siente natural.
+- Tres flores (`FLORES`) sobre el tallo con `desfase` escalonado, para que no
+  se abran todas en el mismo frame.
+- Pétalo cerrado = óvalo chico apretado contra el centro; abierto = el mismo
+  óvalo estirado y separado. La interpolación es continua: no hay salto entre
+  capullo y flor.
+- Verificado en Node simulando 60 fps: puño a y=0.45 → crecimiento 0.75;
+  luego mano abierta → floración 0.99 y **crecimiento sigue en 0.75**; al cerrar
+  → floración 0 y altura intacta; sin manos → se cierra solo.
+
+### Sacudida y partículas
+
+- Se mide sobre la **muñeca** (`keypoints[0]`), no sobre el gesto: la sacudida
+  no depende de que la mano esté abierta o cerrada.
+- Dos condiciones juntas, no una: **velocidad** ≥ `VELOCIDAD_MINIMA_SACUDIDA`
+  (0.9 unidades normalizadas/s) **y** al menos `CAMBIOS_NECESARIOS` (3) cambios
+  de dirección de la `x` dentro de `VENTANA_SACUDIDA_MS` (700 ms).
+  Un barrido amplio en una sola dirección NO dispara nada — verificado.
+- `PASO_MINIMO_SACUDIDA` (0.01) descarta el temblor del tracking.
+- La intensidad entra rápido (`ATAQUE_SACUDIDA` 14) y sale lento
+  (`RELAJO_SACUDIDA` 3.5): al dejar de sacudir, el temblor se apaga solo.
+- El temblor **pivota en la base** de la planta (`translate`/`rotate`/
+  `translate`), no la traslada: es un tallo que se sacude, no un objeto que se
+  desliza.
+- Partículas: máximo `MAX_PARTICULAS` (140), emisión `EMISION_MAXIMA` por segundo
+  × intensidad. Cada una con tamaño, velocidad y vida aleatorios; frenan por
+  roce y flotan hacia arriba. El alfa cae con la vida restante, así desaparecen
+  gradualmente.
+- Verificado en Node: deriva lenta → 0 partículas; barrido en una dirección → 0;
+  sacudida real → intensidad 1.0 y 86 partículas; al parar → 0 en ~5 s y la
+  altura de la planta intacta.
+
+### Inclinación
+
+- Se calcula con el **vector** muñeca (`keypoints[0]`) → centro de la palma
+  (promedio de los nudillos `5, 9, 13, 17`), nunca con la posición. Por eso
+  mover la mano de lado no inclina nada: solo girarla. Verificado moviendo la
+  misma mano inclinada a x=0.25 y x=0.75 → idéntico resultado.
+- `atan2(dx, dy)` da 0 con los dedos hacia arriba y positivo cuando la mano se
+  inclina a la derecha **tal como la ve el usuario**: la `x` está espejada para
+  compensar que la cámara se muestra en espejo.
+- Zona muerta `ANGULO_MUERTO` (0.1 rad ≈ 6°) y saturación en `ANGULO_MAXIMO`
+  (0.6 rad ≈ 34°), que corresponde a `INCLINACION_MAXIMA` (0.28 rad ≈ 16°) de
+  la planta.
+- Suavizado con amortiguación exponencial, y **más lento al volver**
+  (`VELOCIDAD_REGRESO` 1.8) que al seguir (`VELOCIDAD_INCLINACION` 6). Sin
+  manos también vuelve a 0.
+- El ángulo final de dibujo es `inclinacion + temblor`: la inclinación y la
+  sacudida se suman sin pisarse.
+- Verificado en Node: mano recta → 0°; inclinada 28° → 12.8° de planta;
+  simétrica a izquierda; proporcional; regreso lento (tras 1 frame todavía
+  estaba al 97%) y vuelta a 0.
+
+### Integración entre interacciones (revisado)
+
+Las cuatro comparten la misma mano, así que se auditaron cruces. Dos estaban
+rotos y se corrigieron acá:
+
+- **Inclinar movía la altura.** Girar la mano desplaza el centro de la palma
+  ~2-3% de la banda, suficiente para cruzar un borde. Se resolvió con
+  **histéresis de nivel** (`MARGEN_NIVEL` 0.03): para cambiar de nivel hay que
+  pasar el borde con margen.
+- **Sacudir hacía saltar el nivel ~50 veces.** El vaivén vertical de la muñeca
+  se leía como "elegir una altura". Se resolvió con `congelarAltura`: la altura
+  solo se actualiza si la muñeca va lenta (`VELOCIDAD_CONGELAMIENTO_NIVEL`), no
+  hay vaivén reciente (2 reversiones) y no hay sacudida activa.
+- La velocidad instantánea sola **no alcanza**: en los extremos del vaivén pasa
+  por cero, y ahí es justo donde se colaba la actualización. Por eso también
+  congela el vaivén sostenido.
+- Medido antes/después: inclinar 3 → **0** cambios de nivel; sacudir 50 → **1**
+  (solo el transitorio del arranque).
+- No rompe el gesto: subir el puño despacio sigue moviendo el nivel; un salto
+  rápido lo actualiza al detenerse.
+- `plantaDebug.nivelDesdeAltura()` sigue siendo el mapeo puro sin histéresis;
+  el comportamiento real pasa por `nivelConHisteresis()`.
+
 ## Git
 
 Ramas `main` y `develop`. El proyecto anterior en Three.js + Vite está
