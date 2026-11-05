@@ -1080,6 +1080,42 @@ const GRACIA_MANOS_MS = 250;
 /** Aviso si el modelo no termina de cargar. */
 const ESPERA_MANOS_MS = 45000;
 
+/* ---------- Gestos: configuración ---------- */
+
+/**
+ * Solo estos cuatro dedos deciden el gesto. El pulgar queda afuera a
+ * propósito: en un puño real puede quedar afuera de la mano sin que el
+ * gesto deje de ser un puño.
+ *
+ * Índices MediaPipe: mcp = nudillo, pip = articulación media, tip = punta.
+ */
+const DEDOS_GESTO = [
+  { nombre: 'índice', mcp: 5, pip: 6, tip: 8 },
+  { nombre: 'medio', mcp: 9, pip: 10, tip: 12 },
+  { nombre: 'anular', mcp: 13, pip: 14, tip: 16 },
+  { nombre: 'meñique', mcp: 17, pip: 18, tip: 20 },
+];
+
+const GESTO_ABIERTA = 'abierta';
+const GESTO_CERRADO = 'cerrado';
+const GESTO_INDEFINIDO = 'indefinido';
+
+const ETIQUETAS_GESTO = {
+  abierta: 'MANO ABIERTA',
+  cerrado: 'PUÑO CERRADO',
+  indefinido: 'GESTO NO RECONOCIDO',
+};
+
+// Histéresis: para ENTRAR en un estado hace falta más que para SALIR.
+// Sin esto, una mano temblando en el límite parpadea entre estados.
+const UMBRAL_ABIERTA = 0.62; // entra en "abierta"
+const UMBRAL_ABIERTA_SALIDA = 0.52; // sigue en "abierta"
+const UMBRAL_CERRADO = 0.3; // entra en "cerrado"
+const UMBRAL_CERRADO_SALIDA = 0.4; // sigue en "cerrado"
+
+/** Además de la histéresis, el cambio tiene que sostenerse este tiempo. */
+const ESTABILIDAD_GESTO_MS = 150;
+
 let handPose = null;
 let estadoManos = 'inactivo'; // 'inactivo' | 'cargando' | 'listo' | 'error'
 let manosActuales = []; // [{ handedness, confianza, keypoints: [{x,y}], actualizadoEn }]
@@ -1189,6 +1225,11 @@ function alDetectarManos(detectadas) {
   const nuevas = validas.map((mano) => normalizarMano(mano, ahora));
   manosActuales = fusionarManos(nuevas, ahora);
 
+  // El gesto se evalúa sobre los puntos YA suavizados: menos temblor.
+  for (const mano of manosActuales) {
+    mano.gesto = evaluarGesto(mano, ahora);
+  }
+
   pintarManos();
 }
 
@@ -1246,11 +1287,136 @@ function suavizarMano(previa, nueva) {
     handedness: nueva.handedness,
     confianza: nueva.confianza,
     actualizadoEn: nueva.actualizadoEn,
+    // El estado del gesto viaja con la mano para que la histéresis no se
+    // reinicie en cada frame.
+    gesto: previa.gesto,
     keypoints: nueva.keypoints.map((punto, indice) => ({
       x: previa.keypoints[indice].x + (punto.x - previa.keypoints[indice].x) * ALFA_MANOS,
       y: previa.keypoints[indice].y + (punto.y - previa.keypoints[indice].y) * ALFA_MANOS,
     })),
   };
+}
+
+/* ---------- Gestos: clasificación ---------- */
+
+/**
+ * Qué tan abierta está la mano, de 0 (puño) a 1 (todos los dedos extendidos).
+ *
+ * No usa ángulos absolutos, así que no depende de cómo esté orientada la mano
+ * respecto de la cámara. Combina dos señales por dedo, ambas adimensionales:
+ *
+ *   rectitud: distancia punta→nudillo dividida por el recorrido nudillo→punta.
+ *             Un dedo estirado da ~1; uno doblado, mucho menos.
+ *   alcance:  distancia punta→muñeca dividida por nudillo→muñeca.
+ *             Un dedo extendido duplica esa distancia; uno cerrado la deja igual.
+ */
+function puntuacionApertura(keypoints) {
+  const muneca = keypoints[0];
+  if (!muneca) return 0;
+
+  let suma = 0;
+
+  for (const dedo of DEDOS_GESTO) {
+    const mcp = keypoints[dedo.mcp];
+    const pip = keypoints[dedo.pip];
+    const punta = keypoints[dedo.tip];
+    if (!mcp || !pip || !punta) continue;
+
+    const rectitud =
+      distanciaEntre(punta, mcp) /
+      (distanciaEntre(mcp, pip) + distanciaEntre(pip, punta) + 1e-6);
+
+    const alcance = distanciaEntre(punta, muneca) / (distanciaEntre(mcp, muneca) + 1e-6);
+
+    const porRectitud = constrain((rectitud - 0.55) / 0.4, 0, 1);
+    const porAlcance = constrain((alcance - 1.05) / 0.85, 0, 1);
+
+    // La rectitud pesa más: es la señal menos sensible a la perspectiva.
+    suma += porRectitud * 0.65 + porAlcance * 0.35;
+  }
+
+  return suma / DEDOS_GESTO.length;
+}
+
+/**
+ * Máquina de estados del gesto, por mano.
+ * Devuelve { estado, desde, candidato, candidatoDesde, puntuacion }.
+ */
+function evaluarGesto(mano, ahora) {
+  const anterior = mano.gesto || {
+    estado: GESTO_INDEFINIDO,
+    desde: ahora,
+    candidato: GESTO_INDEFINIDO,
+    candidatoDesde: ahora,
+  };
+
+  const puntuacion = puntuacionApertura(mano.keypoints);
+  const objetivo = gestoObjetivo(anterior.estado, puntuacion);
+
+  // Sin cambio pendiente: se mantiene el estado actual.
+  if (objetivo === anterior.estado) {
+    return {
+      estado: anterior.estado,
+      desde: anterior.desde,
+      candidato: objetivo,
+      candidatoDesde: ahora,
+      puntuacion,
+    };
+  }
+
+  // Cambió el objetivo: se arranca (o reinicia) la cuenta de estabilidad.
+  if (objetivo !== anterior.candidato) {
+    return {
+      estado: anterior.estado,
+      desde: anterior.desde,
+      candidato: objetivo,
+      candidatoDesde: ahora,
+      puntuacion,
+    };
+  }
+
+  // El mismo objetivo se sostuvo lo suficiente: se confirma.
+  if (ahora - anterior.candidatoDesde >= ESTABILIDAD_GESTO_MS) {
+    return {
+      estado: objetivo,
+      desde: ahora,
+      candidato: objetivo,
+      candidatoDesde: ahora,
+      puntuacion,
+    };
+  }
+
+  return {
+    estado: anterior.estado,
+    desde: anterior.desde,
+    candidato: objetivo,
+    candidatoDesde: anterior.candidatoDesde,
+    puntuacion,
+  };
+}
+
+/** Aplica la histéresis: qué estado corresponde según el estado actual. */
+function gestoObjetivo(estadoActual, puntuacion) {
+  if (estadoActual === GESTO_ABIERTA) {
+    if (puntuacion >= UMBRAL_ABIERTA_SALIDA) return GESTO_ABIERTA;
+    if (puntuacion <= UMBRAL_CERRADO) return GESTO_CERRADO;
+    return GESTO_INDEFINIDO;
+  }
+
+  if (estadoActual === GESTO_CERRADO) {
+    if (puntuacion <= UMBRAL_CERRADO_SALIDA) return GESTO_CERRADO;
+    if (puntuacion >= UMBRAL_ABIERTA) return GESTO_ABIERTA;
+    return GESTO_INDEFINIDO;
+  }
+
+  if (puntuacion >= UMBRAL_ABIERTA) return GESTO_ABIERTA;
+  if (puntuacion <= UMBRAL_CERRADO) return GESTO_CERRADO;
+  return GESTO_INDEFINIDO;
+}
+
+/** Distancia euclidiana entre dos puntos normalizados. */
+function distanciaEntre(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 /* ---------- Hand Pose: lectura en pantalla ---------- */
@@ -1284,6 +1450,44 @@ function pintarManos(forzar = false) {
 
   elemento.dataset.estado = estadoVisual;
   if (elemento.textContent !== texto) elemento.textContent = texto;
+
+  pintarGestos();
+}
+
+/** Una línea por mano con el gesto reconocido. */
+function pintarGestos() {
+  const lista = document.getElementById('gestos-estado');
+  if (!lista) return;
+
+  if (estadoManos !== 'listo' || manosActuales.length === 0) {
+    lista.hidden = true;
+    lista.replaceChildren();
+    return;
+  }
+
+  lista.hidden = false;
+
+  // Se reutilizan los <li> para no crear nodos en cada actualización.
+  while (lista.children.length < manosActuales.length) {
+    lista.appendChild(document.createElement('li'));
+  }
+  while (lista.children.length > manosActuales.length) {
+    lista.lastElementChild.remove();
+  }
+
+  manosActuales.forEach((mano, indice) => {
+    const estado = mano.gesto ? mano.gesto.estado : GESTO_INDEFINIDO;
+    const puntuacion = mano.gesto ? mano.gesto.puntuacion : 0;
+    const lado =
+      mano.handedness === 'Left' ? 'Izquierda' : mano.handedness === 'Right' ? 'Derecha' : 'Mano';
+
+    const item = lista.children[indice];
+    item.dataset.estado = estado;
+
+    // La puntuación se muestra para poder calibrar los umbrales a mano.
+    const texto = `${lado}: ${ETIQUETAS_GESTO[estado]} · ${puntuacion.toFixed(2)}`;
+    if (item.textContent !== texto) item.textContent = texto;
+  });
 }
 
 function cambiarEstadoManos(estado, mensaje) {

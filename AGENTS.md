@@ -43,8 +43,9 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `style.css` | todos los estilos de la interfaz |
 | `sketch.js` | `setup()` / `draw()` de p5.js en modo global, cámara y Body Pose |
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
+| `planta.js` | crecimiento de la planta con el gesto de puño, en su propia capa |
 
-Cuatro archivos. Si aparece un módulo nuevo, registrarlo en `index.html` en el
+Cinco archivos. Si aparece un módulo nuevo, registrarlo en `index.html` en el
 orden correcto y documentarlo acá.
 
 ## Modo depuración (`debug-pose.js`)
@@ -147,6 +148,52 @@ orden correcto y documentarlo acá.
   Usarlos en vez de hardcodear las 21 conexiones.
 - ml5 **no suaviza** las manos (no hay `enableSmoothing` como en MoveNet): el
   suavizado y la gracia anti-parpadeo los hace `fusionarManos()` en `sketch.js`.
+
+## Gestos (puño / mano abierta)
+
+- Toda la lógica vive en `sketch.js` y no depende de ml5: ml5 entrega puntos,
+  **no** gestos. `puntuacionApertura()` los clasifica.
+- Métrica por dedo, ambas señales adimensionales y sin ángulos absolutos, para
+  que no importe cómo esté orientada la mano:
+  - `rectitud` = distancia punta→nudillo / recorrido nudillo→punta (1 = estirado).
+  - `alcance` = distancia punta→muñeca / nudillo→muñeca.
+- **El pulgar no decide el gesto.** En un puño real puede quedar afuera; incluirlo
+  generaba falsos negativos. Se analizan índice, medio, anular y meñique.
+- `gestoObjetivo()` aplica **histéresis**: para entrar en un estado hace falta más
+  puntaje que para salir. `evaluarGesto()` agrega **dwell** de 150 ms: el cambio
+  tiene que sostenerse antes de confirmarse. Sin las dos cosas, el gesto parpadea.
+- Estados: `abierta`, `cerrado`, `indefinido` → textos `MANO ABIERTA`,
+  `PUÑO CERRADO`, `GESTO NO RECONOCIDO`.
+- Umbrales en `sketch.js`: `UMBRAL_ABIERTA` 0.62 / `UMBRAL_ABIERTA_SALIDA` 0.52;
+  `UMBRAL_CERRADO` 0.30 / `UMBRAL_CERRADO_SALIDA` 0.40. El número que se muestra
+  al lado del gesto en pantalla es la puntuación real: sirve para recalibrar.
+- Verificado con manos sintéticas en Node: abierta → 1.00, puño → 0.03,
+  dedo a 90° → 0.47 (indefinido), y una serie temblando entre 0.56 y 0.64 se
+  queda en `abierta` sin cambiar de estado.
+
+## Planta (`planta.js`)
+
+- **Capa propia, no el canvas de p5.** El paisaje está cacheado con `noLoop()`;
+  redibujar sus ~1600 trazos por frame para animar el crecimiento lo haría
+  inviable. `#planta-overlay` es un canvas transparente encima del de p5, mismo
+  rectángulo, así las coordenadas coinciden sin conversiones.
+- Por eso `sketch.js` **no** se tocó: ni `setup()`, ni `draw()`, ni el paisaje.
+- Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
+  y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
+- Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
+  más recorrido.
+- Cinco niveles: 10%, 30%, 50%, 75%, 100% (`NIVELES` en `planta.js`).
+- Solo crece con **puño cerrado** (`mano.gesto.estado === 'cerrado'`). Sin puño
+  el objetivo no cambia y la planta se queda donde está. Con dos puños manda el
+  más alto.
+- La animación usa amortiguación exponencial (`1 - exp(-k*dt)`), no un lerp con
+  alfa fijo: el crecimiento es fluido y no depende del framerate.
+- La base se ancla con `bordeDeSuelo()` y `CAPAS_SUELO` de `sketch.js`, así la
+  planta nace sobre la tierra dibujada y no flota.
+- `window.plantaDebug.nivelDesdeAltura(y)` expone el mapeo para comprobarlo
+  desde la consola.
+- Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
+  0.20 → 100%, y el mapeo es monótono en toda la banda.
 
 ## Git
 
