@@ -426,6 +426,18 @@ function dibujarMatujo(x, y, alto, tono) {
 // niega el permiso, su callback nunca se llama y la página quedaría muda.
 const ESPERA_CAMARA_MS = 12000;
 
+/**
+ * Encuadre que se le pide a la cámara. 16:9 es la proporción más ancha que
+ * ofrecen las webcams: es la que deja más margen lateral para abrir los brazos.
+ * 720p sobra para el modelo (MediaPipe reescala la entrada igual) y pesa menos
+ * que 1080p al procesar.
+ */
+const ENCUADRE_CAMARA = {
+  ancho: 1280,
+  alto: 720,
+  aspecto: 16 / 9,
+};
+
 let captura = null; // p5.Element que envuelve el <video>. Instancia única.
 let estadoCamara = 'iniciando'; // 'iniciando' | 'lista' | 'error'
 let mensajeCamara = null; // <p id="camara-mensaje">
@@ -458,18 +470,35 @@ function iniciarCamara() {
 
   try {
     // createCapture crea el <video>, pide el permiso y arranca el stream.
-    // flipped: true espeja la imagen EN PANTALLA (vista selfie). Es solo visual:
-    // los píxeles que recibirá ml5 NO vienen espejados. Cuando se integre la
-    // detección, el espejo de coordenadas (x = 1 - x) se aplica una sola vez ahí.
-    captura = createCapture(VIDEO, { flipped: true }, alEstarListaLaCamara);
+    //
+    // p5 fusiona este objeto con { video: true, audio: false }, así que las
+    // restricciones del stream van anidadas en `video`. Si se pasaran width y
+    // height en el primer nivel, getUserMedia las ignoraría sin avisar.
+    //
+    // flipped: true espeja la imagen EN PANTALLA (vista selfie). Es solo
+    // visual: los píxeles que recibirá ml5 NO vienen espejados. Por eso existe
+    // mapearPuntoCamara(), que aplica espejo y recorte una sola vez.
+    captura = createCapture(
+      VIDEO,
+      {
+        flipped: true,
+        video: {
+          facingMode: 'user',
+          width: { ideal: ENCUADRE_CAMARA.ancho },
+          height: { ideal: ENCUADRE_CAMARA.alto },
+          aspectRatio: { ideal: ENCUADRE_CAMARA.aspecto },
+        },
+      },
+      alEstarListaLaCamara
+    );
   } catch (error) {
     console.error('[camara] createCapture falló:', error);
     mostrarErrorCamara('No se pudo iniciar la cámara en este navegador.');
     return;
   }
 
-  // El <video> nace pegado al body: lo movemos al panel de la cámara.
-  captura.parent('camara-contenedor');
+  // El <video> nace pegado al body: lo movemos al marco de la cámara.
+  captura.parent('camara-marco');
 
   // Requisitos de reproducción: sin audio y en línea (necesario en móviles).
   captura.elt.muted = true;
@@ -498,6 +527,9 @@ function alEstarListaLaCamara() {
   if (video) {
     console.info(`[camara] Video listo: ${video.videoWidth}×${video.videoHeight}`);
   }
+
+  // Recién acá hay video con frames: el modelo puede empezar a mirar.
+  iniciarBodyPose();
 }
 
 /**
@@ -520,6 +552,8 @@ function mostrarErrorCamara(texto) {
  */
 function detenerCamara() {
   if (!captura) return;
+
+  detenerBodyPose();
 
   const video = captura.elt;
   const stream = video && video.srcObject;
@@ -603,4 +637,417 @@ function vigilarPermisoCamara() {
 function obtenerVideoCamara() {
   if (!captura || estadoCamara !== 'lista') return null;
   return captura.elt;
+}
+
+/* ---------- Encuadre: coordenadas de detección ↔ imagen mostrada ---------- */
+
+/**
+ * Convierte un punto de detección a coordenadas del área visible del panel.
+ *
+ * Entrada: x, y normalizados 0..1 del frame ORIGINAL de la cámara (lo que
+ * devolverá MediaPipe/ml5, sin espejar).
+ * Salida: { x, y, visible } normalizados 0..1 sobre el marco visible, ya
+ * espejados y con el recorte de object-fit aplicado.
+ *
+ * Todavía no hay detección: existe para que, cuando se integre, las
+ * coordenadas coincidan exactamente con lo que el usuario ve. Sin esto, con
+ * `flipped: true` los puntos saldrían invertidos y cualquier gesto quedaría
+ * del lado equivocado.
+ *
+ *   const video = obtenerVideoCamara();
+ *   if (video) {
+ *     const punto = mapearPuntoCamara(landmark.x, landmark.y);
+ *     if (punto.visible) dibujarAlgo(punto.x * width, punto.y * height);
+ *   }
+ */
+function mapearPuntoCamara(x, y) {
+  const video = obtenerVideoCamara();
+  const marco = document.getElementById('camara-marco');
+
+  // Sin stream no hay transformación que aplicar.
+  if (!video || !marco) return { x, y, visible: true };
+
+  const anchoVideo = video.videoWidth;
+  const altoVideo = video.videoHeight;
+  const anchoMarco = marco.clientWidth;
+  const altoMarco = marco.clientHeight;
+
+  if (!anchoVideo || !altoVideo || !anchoMarco || !altoMarco) {
+    return { x, y, visible: true };
+  }
+
+  // Mismo cálculo que hace object-fit: cover.
+  const escala = Math.max(anchoMarco / anchoVideo, altoMarco / altoVideo);
+  const anchoDibujado = anchoVideo * escala;
+  const altoDibujado = altoVideo * escala;
+
+  // object-position se lee del CSS: una sola fuente de verdad, sin duplicar
+  // el 50% 40% acá dentro.
+  const posicion = leerPosicion(getComputedStyle(video).objectPosition);
+
+  const desplazamientoX = (anchoMarco - anchoDibujado) * posicion.x;
+  const desplazamientoY = (altoMarco - altoDibujado) * posicion.y;
+
+  // El <video> lleva scaleX(-1): se invierte x respecto del centro del marco.
+  const pantallaX = 1 - (desplazamientoX + x * anchoDibujado) / anchoMarco;
+  const pantallaY = (desplazamientoY + y * altoDibujado) / altoMarco;
+
+  return {
+    x: pantallaX,
+    y: pantallaY,
+    visible: pantallaX >= 0 && pantallaX <= 1 && pantallaY >= 0 && pantallaY <= 1,
+  };
+}
+
+/** Lee un object-position tipo "50% 40%" y lo devuelve en fracción 0..1. */
+function leerPosicion(valor) {
+  const partes = String(valor).split(' ').map(parseFloat);
+  return {
+    x: Number.isFinite(partes[0]) ? partes[0] / 100 : 0.5,
+    y: Number.isFinite(partes[1]) ? partes[1] / 100 : 0.5,
+  };
+}
+
+/* ============================================================
+   BODY POSE (ml5.js)
+   Detección del tren superior: nariz, ojos, orejas, hombros,
+   codos, muñecas y caderas. Rodillas, tobillos y pies quedan
+   fuera a propósito: el proyecto trabaja de busto hacia arriba.
+
+   OJO con las coordenadas: con MoveNet sobre un <video>, ml5
+   devuelve los keypoints en PÍXELES del video (su método
+   resizeKeypoints los escala a image.width/height), no en 0..1.
+   Acá se normalizan al entrar, así el resto del código trabaja
+   siempre en 0..1 y puede usar mapearPuntoCamara().
+   ============================================================ */
+
+/* ---------- Body Pose: configuración ---------- */
+
+/** Puntos que nos interesan, en orden de lectura. */
+const PUNTOS_BUSTO = [
+  { clave: 'nose', etiqueta: 'nariz' },
+  { clave: 'left_eye', etiqueta: 'ojo izq' },
+  { clave: 'right_eye', etiqueta: 'ojo der' },
+  { clave: 'left_ear', etiqueta: 'oreja izq' },
+  { clave: 'right_ear', etiqueta: 'oreja der' },
+  { clave: 'left_shoulder', etiqueta: 'hombro izq' },
+  { clave: 'right_shoulder', etiqueta: 'hombro der' },
+  { clave: 'left_elbow', etiqueta: 'codo izq' },
+  { clave: 'right_elbow', etiqueta: 'codo der' },
+  { clave: 'left_wrist', etiqueta: 'muñeca izq' },
+  { clave: 'right_wrist', etiqueta: 'muñeca der' },
+  { clave: 'left_hip', etiqueta: 'cadera izq' },
+  { clave: 'right_hip', etiqueta: 'cadera der' },
+];
+
+/** Debajo de esto el punto existe pero no es confiable. */
+const CONFIANZA_MINIMA = 0.3;
+
+/** Para dar por detectado el busto hacen falta nariz y ambos hombros. */
+const CONFIANZA_BUSTO = 0.4;
+
+/** El DOM no necesita más de ~8 actualizaciones por segundo. */
+const REFRESCO_LECTURA_MS = 120;
+
+/** Aviso si la descarga del modelo no termina (ml5 + pesos ≈ 9 MB la 1ª vez). */
+const ESPERA_MODELO_MS = 45000;
+
+let bodyPose = null;
+let estadoPose = 'inactivo'; // 'inactivo' | 'cargando' | 'listo' | 'error'
+let poseBusto = null; // última pose normalizada (0..1) o null
+let mensajePose = 'Cuerpo: esperando cámara…';
+let ultimoPintadoPose = 0;
+let cargandoBodyPose = false;
+let temporizadorModelo = null;
+
+/* ---------- Body Pose: inicialización ---------- */
+
+/**
+ * Carga el modelo y arranca la detección continua.
+ * Idempotente: si ya hay instancia o una carga en curso, no hace nada.
+ * Se llama recién cuando la cámara entregó su primer frame.
+ */
+async function iniciarBodyPose() {
+  if (bodyPose || cargandoBodyPose) return;
+
+  if (typeof ml5 === 'undefined' || typeof ml5.bodyPose !== 'function') {
+    cambiarEstadoPose('error', 'Cuerpo: ml5 no cargó. Revisá la conexión y recargá.');
+    return;
+  }
+
+  const video = obtenerVideoCamara();
+  if (!video) {
+    cambiarEstadoPose('error', 'Cuerpo: la cámara no está lista.');
+    return;
+  }
+
+  cargandoBodyPose = true;
+  cambiarEstadoPose('cargando', 'Cuerpo: cargando modelo…');
+  console.info('[bodyPose] Cargando MoveNet SINGLEPOSE_LIGHTNING…');
+
+  // Si la descarga se cuelga, no dejamos la UI muda para siempre.
+  temporizadorModelo = window.setTimeout(() => {
+    if (estadoPose === 'cargando') {
+      cambiarEstadoPose(
+        'error',
+        'Cuerpo: el modelo no terminó de cargar. Revisá la conexión y recargá.'
+      );
+    }
+  }, ESPERA_MODELO_MS);
+
+  try {
+    // OJO: con p5 2.x, ml5 promisifica sus constructores (p5 2.x ya no tiene
+    // registerMethod, así que ml5 usa "async constructors"). `ml5.bodyPose()`
+    // devuelve una PROMESA, no la instancia: acceder a `.ready` ahí es
+    // undefined y rompe. Con p5 1.x devuelve la instancia y hay que esperar
+    // `.ready`. `await` cubre los dos casos.
+    const instancia = await ml5.bodyPose('MoveNet', {
+      modelType: 'SINGLEPOSE_LIGHTNING',
+      enableSmoothing: true,
+      minPoseScore: 0.25,
+    });
+
+    // Red de seguridad para el camino de p5 1.x.
+    if (instancia && instancia.ready && typeof instancia.ready.then === 'function') {
+      await instancia.ready;
+    }
+
+    if (!instancia || typeof instancia.detectStart !== 'function') {
+      throw new Error('ml5 no devolvió un modelo utilizable');
+    }
+
+    bodyPose = instancia;
+    alCargarModeloPose();
+  } catch (error) {
+    manejarErrorPose(error);
+  } finally {
+    cargandoBodyPose = false;
+    if (temporizadorModelo) {
+      window.clearTimeout(temporizadorModelo);
+      temporizadorModelo = null;
+    }
+  }
+}
+
+/** El modelo terminó de cargar: arranca el bucle de detección. */
+function alCargarModeloPose() {
+  const video = obtenerVideoCamara();
+  if (!video) {
+    cambiarEstadoPose('error', 'Cuerpo: la cámara se cerró antes de cargar el modelo.');
+    return;
+  }
+
+  if (!bodyPose.detecting) {
+    // detectStart corre su propio bucle y avisa por callback en cada frame.
+    bodyPose.detectStart(video, alDetectarPoseBusto);
+  }
+
+  console.info('[bodyPose] Modelo listo: MoveNet SINGLEPOSE_LIGHTNING');
+  cambiarEstadoPose('listo', 'Cuerpo: buscando…');
+}
+
+/**
+ * Detiene el bucle de detección y limpia el estado.
+ * `detectStop()` solo marca la señal: el bucle termina en el frame siguiente.
+ */
+function detenerBodyPose() {
+  if (bodyPose && bodyPose.detecting) {
+    bodyPose.detectStop();
+  }
+  poseBusto = null;
+  cambiarEstadoPose('inactivo', 'Cuerpo: inactivo');
+}
+
+function manejarErrorPose(error) {
+  console.error('[bodyPose]', error);
+  const detalle = error instanceof Error ? error.message : String(error ?? 'error desconocido');
+  cambiarEstadoPose('error', `Cuerpo: error del modelo (${detalle})`);
+}
+
+/* ---------- Body Pose: detección ---------- */
+
+/**
+ * Callback de detectStart: se ejecuta en cada frame procesado.
+ * `poses` es un array; vacío significa que no hay nadie en cuadro.
+ */
+function alDetectarPoseBusto(poses) {
+  if (!Array.isArray(poses) || poses.length === 0) {
+    poseBusto = null;
+    pintarPose();
+    return;
+  }
+
+  poseBusto = normalizarPoseBusto(elegirMejorPose(poses));
+  pintarPose();
+}
+
+/** Con varias poses en cuadro, nos quedamos con la de busto más confiable. */
+function elegirMejorPose(poses) {
+  let mejor = poses[0];
+  let mejorPuntaje = -1;
+
+  for (const pose of poses) {
+    let puntaje = 0;
+    for (const definir of PUNTOS_BUSTO) {
+      const punto = pose[definir.clave];
+      if (punto && typeof punto.confidence === 'number') puntaje += punto.confidence;
+    }
+    if (puntaje > mejorPuntaje) {
+      mejorPuntaje = puntaje;
+      mejor = pose;
+    }
+  }
+
+  return mejor;
+}
+
+/**
+ * Convierte la pose cruda de ml5 a un objeto normalizado y estable:
+ * cada punto con x, y en 0..1 (del frame de cámara) y su confianza.
+ */
+function normalizarPoseBusto(pose) {
+  const video = obtenerVideoCamara();
+
+  // ml5 usa image.width / image.height para escalar: son los mismos valores
+  // con los que hay que dividir para volver a 0..1.
+  const ancho = (video && (video.width || video.videoWidth)) || 1;
+  const alto = (video && (video.height || video.videoHeight)) || 1;
+
+  const puntos = {};
+  let narizVisible = false;
+  let hombrosVisibles = 0;
+  let sumaConfianza = 0;
+  let cantidadConFuerza = 0;
+
+  for (const definir of PUNTOS_BUSTO) {
+    const crudo = pose[definir.clave];
+
+    if (!crudo || typeof crudo.x !== 'number' || typeof crudo.y !== 'number') {
+      puntos[definir.clave] = null;
+      continue;
+    }
+
+    const confianza = typeof crudo.confidence === 'number' ? crudo.confidence : 0;
+
+    puntos[definir.clave] = {
+      etiqueta: definir.etiqueta,
+      x: crudo.x / ancho,
+      y: crudo.y / alto,
+      confianza,
+      visible: confianza >= CONFIANZA_MINIMA,
+    };
+
+    sumaConfianza += confianza;
+    cantidadConFuerza += 1;
+
+    if (definir.clave === 'nose' && confianza >= CONFIANZA_BUSTO) narizVisible = true;
+    if (
+      (definir.clave === 'left_shoulder' || definir.clave === 'right_shoulder') &&
+      confianza >= CONFIANZA_BUSTO
+    ) {
+      hombrosVisibles += 1;
+    }
+  }
+
+  return {
+    timestamp: performance.now(),
+    puntos,
+    // El busto está completo si se ve la nariz y los dos hombros.
+    bustoEnCuadro: narizVisible && hombrosVisibles === 2,
+    hombrosVisibles,
+    confianzaMedia: cantidadConFuerza ? sumaConfianza / cantidadConFuerza : 0,
+  };
+}
+
+/* ---------- Body Pose: lectura en pantalla ---------- */
+
+/**
+ * Actualiza el estado y la tabla de puntos del panel de cámara.
+ * Throttled: el modelo entrega ~30 resultados por segundo y no hace falta
+ * tocar el DOM a esa velocidad.
+ */
+function pintarPose(forzar = false) {
+  const ahora = performance.now();
+  if (!forzar && ahora - ultimoPintadoPose < REFRESCO_LECTURA_MS) return;
+  ultimoPintadoPose = ahora;
+
+  const estadoEl = document.getElementById('pose-estado');
+  const puntosEl = document.getElementById('pose-puntos');
+  if (!estadoEl || !puntosEl) return;
+
+  let estadoVisual = 'inactivo';
+  let texto = mensajePose;
+
+  if (estadoPose === 'cargando') {
+    estadoVisual = 'parcial';
+  } else if (estadoPose === 'error') {
+    estadoVisual = 'error';
+  } else if (estadoPose === 'listo') {
+    if (!poseBusto) {
+      estadoVisual = 'parcial';
+      texto = 'Cuerpo: sin detección — entrá en cuadro';
+    } else if (!poseBusto.bustoEnCuadro) {
+      estadoVisual = 'parcial';
+      texto = 'Cuerpo: busto incompleto — centrate y acercate';
+    } else {
+      estadoVisual = 'listo';
+      texto = 'Cuerpo: busto detectado';
+    }
+  }
+
+  estadoEl.dataset.estado = estadoVisual;
+  if (estadoEl.textContent !== texto) estadoEl.textContent = texto;
+
+  if (estadoPose === 'listo' && poseBusto) {
+    puntosEl.hidden = false;
+    const contenido = formatearPuntos(poseBusto.puntos);
+    if (puntosEl.textContent !== contenido) puntosEl.textContent = contenido;
+  } else {
+    puntosEl.hidden = true;
+  }
+}
+
+/** Tabla de texto con x, y y confianza por punto. */
+function formatearPuntos(puntos) {
+  const lineas = [`${'punto'.padEnd(11)} ${'x'.padStart(4)}  ${'y'.padStart(4)}  conf`];
+
+  for (const definir of PUNTOS_BUSTO) {
+    const punto = puntos[definir.clave];
+    const etiqueta = definir.etiqueta.padEnd(11);
+
+    if (!punto) {
+      lineas.push(`${etiqueta}    —`);
+      continue;
+    }
+
+    lineas.push(
+      `${etiqueta} ${punto.x.toFixed(2).padStart(4)}  ${punto.y
+        .toFixed(2)
+        .padStart(4)}  ${punto.confianza.toFixed(2)}`
+    );
+  }
+
+  return lineas.join('\n');
+}
+
+/** Cambia el estado del reconocimiento y repinta sin esperar al throttle. */
+function cambiarEstadoPose(estado, mensaje) {
+  estadoPose = estado;
+  if (mensaje) mensajePose = mensaje;
+  pintarPose(true);
+}
+
+/* ---------- Body Pose: API pública para el resto del sketch ---------- */
+
+/**
+ * Devuelve la última pose normalizada (0..1) o null.
+ * Ver el bloque Body Pose: cada punto es { x, y, confianza, visible }.
+ */
+function obtenerPoseBusto() {
+  return poseBusto;
+}
+
+/** Estado del reconocimiento: 'inactivo' | 'cargando' | 'listo' | 'error'. */
+function obtenerEstadoPose() {
+  return estadoPose;
 }

@@ -25,10 +25,14 @@
       <div class="experiencia__escenario">
         <!--
           Espacio para la cámara.
-          El <video> lo crea p5.js (createCapture) y sketch.js lo monta acá
-          dentro. El atributo data-estado lo maneja el sketch:
+          El <video> lo crea p5.js (createCapture) y sketch.js lo monta dentro
+          de #camara-marco. El atributo data-estado lo maneja el sketch:
             iniciando -> pide permiso     lista -> stream andando
             error     -> no hubo acceso
+
+          El marco es 16:9 a propósito: al coincidir con la proporción que se
+          le pide a la cámara, la imagen entra completa y no se recorta nada
+          por los costados (que es donde quedan las manos al abrir los brazos).
         -->
         <section id="camara" class="panel" aria-labelledby="camara-titulo">
           <h2 id="camara-titulo" class="panel__titulo">Cámara</h2>
@@ -37,7 +41,25 @@
             class="panel__contenido panel__contenido--camara"
             data-estado="iniciando"
           >
-            <p id="camara-mensaje" class="panel__nota">Solicitando permiso para usar la cámara…</p>
+            <div id="camara-marco" class="camara__marco">
+              <p id="camara-mensaje" class="panel__nota">Solicitando permiso para usar la cámara…</p>
+              <!-- Modo depuración: esqueleto de Body Pose encima del video.
+                   Lo dibuja debug-pose.js. pointer-events: none. -->
+              <canvas id="pose-overlay" class="camara__overlay" aria-hidden="true"></canvas>
+            </div>
+
+            <!-- Estado del reconocimiento corporal. data-estado lo maneja el sketch. -->
+            <p id="pose-estado" class="camara__pose" data-estado="inactivo">
+              Cuerpo: esperando cámara…
+            </p>
+
+            <p class="camara__guia">
+              Encuadre de busto: cabeza, hombros y manos dentro del recuadro. Si tus manos
+              salen del marco, alejate un poco de la cámara.
+            </p>
+
+            <!-- Lectura de x, y y confianza de cada punto del tren superior. -->
+            <pre id="pose-puntos" class="camara__puntos" hidden></pre>
           </div>
         </section>
 
@@ -57,14 +79,17 @@
     <script src="https://cdn.jsdelivr.net/npm/p5@2.3.3/lib/p5.min.js"></script>
 
     <!--
-      ml5.js: integración preparada, todavía desactivada.
-      Se deja comentada a propósito para no cargar ~1 MB que nadie usa aún.
-      Al integrar la detección de manos, descomentar esta línea. Debe quedar
-      entre p5.js y sketch.js, porque sketch.js corre después.
+      ml5.js: reconocimiento corporal (Body Pose / MoveNet).
+      Va entre p5.js y sketch.js porque sketch.js lo usa al inicializar.
+      Pesa ~4.4 MB e incluye TensorFlow.js: la primera carga tarda.
     -->
-    <!-- <script src="https://unpkg.com/ml5@1.4.0/dist/ml5.min.js"></script> -->
+    <script src="https://unpkg.com/ml5@1.4.0/dist/ml5.min.js"></script>
 
     <!-- Código del sketch: siempre último. -->
     <script src="sketch.js"></script>
+
+    <!-- Modo depuración visual de Body Pose. Para la presentación final:
+         borrar esta línea (o poner DEPURACION_POSE = false dentro del archivo). -->
+    <script src="debug-pose.js"></script>
   </body>
 </html>

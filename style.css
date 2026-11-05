@@ -115,18 +115,86 @@ body {
   min-height: 0;
 }
 
-/* Espacio reservado para la cámara: centra la nota mientras no hay video. */
+/* Espacio de la cámara: marco 16:9 centrado + guía de encuadre debajo. */
 .panel__contenido--camara {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
   padding: 16px;
   background: #101216;
+  overflow: hidden;
+}
+
+/* Ventana 16:9. Mantiene el frame completo de la cámara sin recortar los
+   costados; si la cámara entrega 4:3, el recorte de object-fit es vertical. */
+.camara__marco {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #000;
+}
+
+/* Encuadre de busto: centrado horizontal y apenas arriba del centro vertical,
+   así entra la cabeza completa y se descarta la parte baja del cuadro. */
+.camara__guia {
+  max-width: 46ch;
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--color-tenue);
+}
+
+/* Sin cámara la guía no aplica: no hay encuadre que corregir. */
+.panel__contenido--camara[data-estado="error"] .camara__guia {
+  display: none;
+}
+
+/* ---------- Lectura del reconocimiento corporal ---------- */
+
+.camara__pose {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: var(--color-tenue);
+}
+
+.camara__pose[data-estado="listo"] {
+  color: #7fd1a5;
+}
+
+.camara__pose[data-estado="parcial"] {
+  color: #e0b25f;
+}
+
+.camara__pose[data-estado="error"] {
+  color: #e2707a;
+}
+
+/* Tabla de puntos: x, y y confianza. Monoespaciada para que las columnas
+   queden alineadas sin tablas ni cálculos de ancho. */
+.camara__puntos {
+  width: 100%;
+  max-height: 30vh;
+  margin: 0;
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--color-tenue);
+  white-space: pre;
 }
 
 .panel__nota {
   position: relative;
-  /* Por encima del video mientras se pide permiso. */
-  z-index: 1;
+  /* Por encima del video y del overlay de depuración. */
+  z-index: 3;
   max-width: 42ch;
   font-size: 12.5px;
   line-height: 1.5;
@@ -141,15 +209,16 @@ body {
 
 /* ---------- Video de la cámara ---------- */
 
-/* El <video> lo inyecta p5.js (createCapture) dentro de este contenedor. */
+/* El <video> lo inyecta p5.js (createCapture) dentro del marco. */
 .panel__contenido--camara video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  /* Respeta la proporción original del stream; las franjas sobran y las
-     rellena el fondo negro. Nunca se deforma la imagen. */
-  object-fit: contain;
+  /* cover + marco 16:9 = nunca recorta a los costados (brazos y manos a salvo).
+     Con una cámara 16:9 no recorta nada; con una 4:3 recorta arriba y abajo. */
+  object-fit: cover;
+  object-position: 50% 40%;
   background: #000;
   display: block;
 }
@@ -162,6 +231,18 @@ body {
 /* Si falló el acceso, no hay stream que mostrar. */
 .panel__contenido--camara[data-estado="error"] video {
   display: none;
+}
+
+/* ---------- Overlay de depuración (esqueleto) ---------- */
+
+/* Mismo rectángulo que el video: por eso mapearPuntoCamara() coincide al pixel. */
+.camara__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /* El canvas lo inyecta p5.js dentro de este contenedor. */
