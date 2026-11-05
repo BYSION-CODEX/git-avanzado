@@ -1,40 +1,76 @@
 # AGENTS.md
 
-Static p5.js + ml5.js hand-gesture game prototype. No package manager, no bundler, no tests, no CI.
+Experiencia web interactiva de conciencia ambiental. p5.js + ml5.js por CDN,
+sin build, sin package manager, sin tests.
 
-## Run
+## Estado
 
-- No build step. Serve the folder over HTTP (e.g. `npx serve .`) and open it — `file://` will fail because the webcam needs `localhost` or HTTPS.
-- Camera permission is requested on load via `HandTracker.init()`; a denied prompt renders as red text on the canvas.
+Estructura base + captura de video. La cámara se pide con `createCapture(VIDEO)`
+y el stream se muestra en `#camara-contenedor`. **No hay ml5.js cargado, no hay
+reconocimiento corporal, ni gestos, ni animación.**
 
-## Architecture
+Estados de la cámara en `sketch.js`, reflejados en `data-estado` del contenedor:
+`iniciando` → `lista` → o `error`. Ojo: `createCapture` **solo llama al callback
+si el stream carga**; si se niega el permiso no avisa, por eso hay un temporizador
+de respaldo y un chequeo de `navigator.permissions`.
 
-Three people own three modules in parallel. One shared contract, one wiring file.
+## Ejecutar
 
-- `js/contracts.js` — **the only shared file**. `Hand` / `HandFrame` typedefs, MediaPipe landmark indices, and the pure `viewportFor` / `mapPointToCanvas` helpers. Changing it requires agreement from all three owners.
-- `js/handpose.js` — `HandTracker`: owns the hidden `<video>`, the ml5 model, and the skeleton rendering. Public API: `init()`, `isReady()`, `getError()`, `getFrame()`, `getAspect()`, `draw()`, `stop()`.
-- `js/gamelogic.js` — `GameLogic`: consumes `HandFrame`, decides, exposes `getState()`. Must never call p5 drawing functions.
-- `js/ui.js` — `Hud`: draws overlays from `HandFrame` + `getState()`. Must not touch keypoint topology or mutate game state.
-- `sketch.js` — composition root only. Per frame: `background` → `game.update(frame)` → `handTracker.draw()` → `hud.draw()`. Keep feature logic out of this file.
-- `index.html` — load order is load-bearing: p5 → ml5 → `contracts.js` → `gamelogic.js` → `handpose.js` → `ui.js` → `sketch.js`. `sketch.js` stays last (defines `setup`/`draw`); `contracts.js` must precede every module that reads the typedefs.
+No hay paso de build. Servir la carpeta por HTTP desde la raíz del repo:
 
-## Conventions and gotchas
+```powershell
+npx serve . -l 8000
+```
 
-- **Hand coordinates are normalized 0..1** in camera space, never pixels. Consumers scale with `viewportFor(width, height, handTracker.getAspect())`. Do not introduce camera-pixel coordinates into the contract.
-- Camera image is never drawn — only the stick-figure skeleton. Do not add `image(video, ...)`; the video element is created off-DOM on purpose.
-- X is mirrored (`mirror: true`) so movement matches selfie view, and `handedness` is swapped accordingly. Flipping any of that requires updating both drawing and game input.
-- No ES modules. Scripts share global scope via plain `<script>` tags, so `import`/`export` fail. A new file must be registered in `index.html` in the right order.
-- Use p5 global mode (`setup`/`draw`), not instance mode, matching existing code.
-- p5 is pinned to `2.3.3` and ml5 to `1.4.0` in `index.html`; bump deliberately, never implicitly.
-- `ml5.handPose()` is a **synchronous factory**: it returns the instance immediately and the load promise is `instance.ready`. `await ml5.handPose()` is a no-op and makes `detectStart()` run against a null model, killing ml5's internal loop silently (no console error, zero hands forever). Always `await instance.ready` before `detectStart()`.
-- `detectStart(video, cb)` pushes results on its own; `draw()` must tolerate running before init resolves (it renders loading text, and a separate "waiting for camera frames" state when the model is loaded but silent).
-- The camera `<video>` stays in the DOM, off-screen and transparent — not `display:none`, not detached, because some browsers stop producing frames without a render surface. The image itself is never drawn.
-- ml5 results give 21 `keypoints` in MediaPipe order; `HandTracker.CONNECTIONS` encodes the bones. Adding a landmark consumer means using `HAND_LANDMARKS` from `contracts.js`, not magic indices.
-- Performance knobs live on `HandTracker`: `detectFps` (default 30), `inputMaxWidth` (default 480, model input is downscaled), `input: "canvas" | "video"`. Keypoints are normalized against the **input canvas** size (`_inputWidth`/`_inputHeight`), not `videoWidth` — changing `inputMaxWidth` without that normalization silently shifts the skeleton.
-- `sketch.js` calls `pixelDensity(1)`; removing it quadruples fill cost on high-DPI screens.
-- Commit messages in this repo are in Spanish (e.g. "Se creó la estructura de archivos"); match that language.
+Abrir `http://localhost:8000`. `file://` NO sirve: la cámara necesita
+`localhost` o HTTPS, y además los scripts por CDN fallan distinto ahí.
+El permiso de cámara es por origen (host + puerto): usar siempre el mismo puerto.
 
-## Branching
+Ojo: en esta máquina `python` es el alias de Microsoft Store y **no** está
+instalado, así que `python -m http.server` falla. Usar `npx serve` o cualquier
+otro servidor estático (Live Server de VS Code también sirve).
 
-- Branches: `main`, `develop`, and one feature branch per feature (`feature/handpose` currently active).
-- No remote is configured and there is no PR/CI workflow to satisfy.
+## Archivos
+
+| Archivo | Rol |
+|---|---|
+| `index.html` | documento único: contenedor principal, espacio de cámara, espacio de lienzo y carga de librerías |
+| `style.css` | todos los estilos de la interfaz |
+| `sketch.js` | `setup()` / `draw()` de p5.js en modo global |
+
+Tres archivos, nada más. Si aparece un módulo nuevo, registrarlo en
+`index.html` en el orden correcto y documentarlo acá.
+
+## Reglas
+
+- **Nada de bundler, npm, frameworks ni ES modules.** `sketch.js` es un script
+  clásico: `import`/`export` rompen la página. p5 está en modo global
+  (`setup`, `draw`, `createCanvas`, … son globales).
+- **Orden de carga en `index.html`**: p5.js → ml5.js (cuando se active) →
+  `sketch.js`. `sketch.js` va último porque define `setup`/`draw`.
+- **Versiones pinneadas**: p5 `2.3.3` (jsDelivr) y ml5 `1.4.0` (unpkg).
+  Actualizar es una decisión deliberada, nunca un efecto de copiar un `<script>`.
+- **ml5 está preparado pero comentado** en `index.html`. Se descomenta al
+  integrar la detección de manos; no cargarlo antes evita ~1 MB inútil.
+- El canvas se crea en `setup()` y se ancla con `canvas.parent(#lienzo-contenedor)`.
+  No escribir `<canvas>` a mano en el HTML.
+- `pixelDensity(1)`: sin esto, un monitor de alta densidad cuadruplica el costo.
+- `noLoop()` está activo porque el placeholder es estático. Al empezar la
+  animación hay que quitarlo (y el `redraw()` de `windowResized` deja de hacer falta).
+- Todos los números y colores visibles viven en `:root` de `style.css`.
+
+## Gotchas a respetar cuando se integre la cámara
+
+- El `<video>` debe quedar **en el DOM** y no con `display: none`: sin superficie
+  de render algunos navegadores dejan de entregar frames.
+- La imagen de la cámara **no se dibuja** en el lienzo; solo se usan los landmarks.
+- `ml5.handPose()` es una **fábrica síncrona**: devuelve la instancia y la promesa
+  de carga es `instance.ready`. `await ml5.handPose()` no espera nada y el
+  detector arranca contra un modelo nulo (cero manos, sin error).
+- Coordenadas de mano siempre normalizadas `0..1`, nunca píxeles. El espejo
+  (`x = 1 - x`) se aplica una sola vez, en la capa de detección.
+
+## Git
+
+Ramas `main` y `develop`. El proyecto anterior en Three.js + Vite está
+preservado en la rama `feature/three-vite`; no es la versión activa.

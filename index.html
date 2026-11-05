@@ -1,18 +1,70 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Experiencia interactiva de conciencia ambiental: la naturaleza se regenera con tus movimientos." />
+    <meta name="color-scheme" content="dark" />
+    <title>El cambio florece contigo</title>
+
+    <!-- Estilos propios. Una sola hoja, sin frameworks ni resets externos. -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <!-- Contenedor principal de la experiencia interactiva. -->
+    <main id="experiencia" class="experiencia">
+      <header class="experiencia__encabezado">
+        <h1 class="experiencia__titulo">El cambio florece contigo</h1>
+        <p class="experiencia__bajada">
+          Experiencia de conciencia ambiental: tus movimientos devuelven la vida al paisaje.
+        </p>
+      </header>
+
+      <!-- Dos espacios reservados: cámara a la izquierda, lienzo p5 a la derecha. -->
+      <div class="experiencia__escenario">
+        <!--
+          Espacio para la cámara.
+          El <video> lo crea p5.js (createCapture) y sketch.js lo monta acá
+          dentro. El atributo data-estado lo maneja el sketch:
+            iniciando -> pide permiso     lista -> stream andando
+            error     -> no hubo acceso
+        -->
+        <section id="camara" class="panel" aria-labelledby="camara-titulo">
+          <h2 id="camara-titulo" class="panel__titulo">Cámara</h2>
+          <div
+            id="camara-contenedor"
+            class="panel__contenido panel__contenido--camara"
+            data-estado="iniciando"
+          >
+            <p id="camara-mensaje" class="panel__nota">Solicitando permiso para usar la cámara…</p>
+          </div>
+        </section>
+
+        <!--
+          Espacio para el lienzo de p5.js.
+          El canvas se crea en sketch.js y se ancla a este contenedor, por eso
+          acá no hay <canvas> escrito a mano.
+        -->
+        <section id="lienzo" class="panel" aria-labelledby="lienzo-titulo">
+          <h2 id="lienzo-titulo" class="panel__titulo">Lienzo</h2>
+          <div id="lienzo-contenedor" class="panel__contenido panel__contenido--lienzo"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- p5.js: obligatorio antes de sketch.js (define setup/draw). -->
     <script src="https://cdn.jsdelivr.net/npm/p5@2.3.3/lib/p5.min.js"></script>
-    <script src="https://unpkg.com/ml5@1.4.0/dist/ml5.min.js"></script>
-    <script src="js/contracts.js"></script>
-    <script src="js/gamelogic.js"></script>
-    <script src="js/handpose.js"></script>
-    <script src="js/ui.js"></script>
+
+    <!--
+      ml5.js: integración preparada, todavía desactivada.
+      Se deja comentada a propósito para no cargar ~1 MB que nadie usa aún.
+      Al integrar la detección de manos, descomentar esta línea. Debe quedar
+      entre p5.js y sketch.js, porque sketch.js corre después.
+    -->
+    <!-- <script src="https://unpkg.com/ml5@1.4.0/dist/ml5.min.js"></script> -->
+
+    <!-- Código del sketch: siempre último. -->
     <script src="sketch.js"></script>
-    <title>Document</title>
-</head>
-<body>
-</body>
+  </body>
 </html>

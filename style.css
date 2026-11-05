@@ -1,4 +1,10 @@
-/* Basic CSS reset */
+/* ============================================================
+   El cambio florece contigo — estilos de la interfaz
+   Sin frameworks ni dependencias externas.
+   Estado actual: solo estructura y layout. Sin animaciones.
+   ============================================================ */
+
+/* ---------- Reset mínimo ---------- */
 
 *,
 *::before,
@@ -6,45 +12,184 @@
   box-sizing: border-box;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
+html,
+body {
+  height: 100%;
 }
 
 body {
-  min-height: 100vh;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+  margin: 0;
 }
 
-img,
-picture,
-video,
-canvas,
-svg {
-  display: block;
-  max-width: 100%;
-}
-
-input,
-button,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-}
-
-p,
 h1,
 h2,
-h3,
-h4,
-h5,
-h6 {
-  overflow-wrap: break-word;
+p {
+  margin: 0;
+}
+
+/* ---------- Variables ---------- */
+
+:root {
+  --color-fondo: #14161a;
+  --color-panel: #1b1e23;
+  --color-borde: rgba(255, 255, 255, 0.09);
+  --color-texto: #e7ecf2;
+  --color-tenue: #8d959f;
+  --radio: 12px;
+  --espacio: clamp(14px, 2vw, 26px);
+}
+
+/* ---------- Base ---------- */
+
+body {
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  /* El lienzo ocupa el alto disponible: sin scroll en escritorio. */
+  overflow: hidden;
+}
+
+/* ---------- Contenedor principal ---------- */
+
+.experiencia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio);
+  height: 100%;
+  padding: var(--espacio);
+}
+
+.experiencia__encabezado {
+  flex: 0 0 auto;
+}
+
+.experiencia__titulo {
+  font-size: clamp(20px, 2.6vw, 32px);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.experiencia__bajada {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-tenue);
+  max-width: 60ch;
+}
+
+/* ---------- Escenario: cámara + lienzo ---------- */
+
+.experiencia__escenario {
+  /* min-height: 0 permite que los hijos con flex se achiquen en vez de desbordar. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--espacio);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  background: var(--color-panel);
+}
+
+.panel__titulo {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-borde);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-tenue);
+}
+
+.panel__contenido {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Espacio reservado para la cámara: centra la nota mientras no hay video. */
+.panel__contenido--camara {
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #101216;
+}
+
+.panel__nota {
+  position: relative;
+  /* Por encima del video mientras se pide permiso. */
+  z-index: 1;
+  max-width: 42ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--color-tenue);
+}
+
+/* El mensaje de error se pinta en rojo; el de "permiso vencido" se distingue. */
+.panel__contenido--camara[data-estado="error"] .panel__nota {
+  color: #e2707a;
+}
+
+/* ---------- Video de la cámara ---------- */
+
+/* El <video> lo inyecta p5.js (createCapture) dentro de este contenedor. */
+.panel__contenido--camara video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Respeta la proporción original del stream; las franjas sobran y las
+     rellena el fondo negro. Nunca se deforma la imagen. */
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+/* Mientras se pide permiso el stream todavía puede estar vacío: no mostrarlo. */
+.panel__contenido--camara[data-estado="iniciando"] video {
+  opacity: 0;
+}
+
+/* Si falló el acceso, no hay stream que mostrar. */
+.panel__contenido--camara[data-estado="error"] video {
+  display: none;
+}
+
+/* El canvas lo inyecta p5.js dentro de este contenedor. */
+.panel__contenido--lienzo {
+  overflow: hidden;
+}
+
+.panel__contenido--lienzo canvas {
+  display: block;
+}
+
+/* ---------- Adaptación a pantallas angostas ---------- */
+
+@media (max-width: 860px) {
+  body {
+    overflow: auto;
+  }
+
+  .experiencia {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .experiencia__escenario {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    min-height: 240px;
+  }
 }
