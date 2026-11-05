@@ -64,6 +64,10 @@ Tres archivos, nada más. Si aparece un módulo nuevo, registrarlo en
 - El `<video>` debe quedar **en el DOM** y no con `display: none`: sin superficie
   de render algunos navegadores dejan de entregar frames.
 - La imagen de la cámara **no se dibuja** en el lienzo; solo se usan los landmarks.
+- El video está espejado **visualmente** (`createCapture(VIDEO, { flipped: true }, cb)`).
+  Eso es solo CSS (`transform: scaleX(-1)`): los píxeles que recibe ml5 **no**
+  están espejados. El espejo de coordenadas (`x = 1 - x`) se aplica una sola vez
+  en la capa de detección, nunca dos.
 - `ml5.handPose()` es una **fábrica síncrona**: devuelve la instancia y la promesa
   de carga es `instance.ready`. `await ml5.handPose()` no espera nada y el
   detector arranca contra un modelo nulo (cero manos, sin error).
