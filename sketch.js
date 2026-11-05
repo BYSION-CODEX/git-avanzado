@@ -528,8 +528,9 @@ function alEstarListaLaCamara() {
     console.info(`[camara] Video listo: ${video.videoWidth}×${video.videoHeight}`);
   }
 
-  // Recién acá hay video con frames: el modelo puede empezar a mirar.
+  // Recién acá hay video con frames: los modelos pueden empezar a mirar.
   iniciarBodyPose();
+  iniciarHandPose();
 }
 
 /**
@@ -554,6 +555,7 @@ function detenerCamara() {
   if (!captura) return;
 
   detenerBodyPose();
+  detenerHandPose();
 
   const video = captura.elt;
   const stream = video && video.srcObject;
@@ -1047,7 +1049,272 @@ function obtenerPoseBusto() {
   return poseBusto;
 }
 
-/** Estado del reconocimiento: 'inactivo' | 'cargando' | 'listo' | 'error'. */
+/** Estado del reconocimiento corporal: 'inactivo' | 'cargando' | 'listo' | 'error'. */
 function obtenerEstadoPose() {
   return estadoPose;
+}
+
+/* ============================================================
+   HAND POSE (ml5.js)
+   Detección de las dos manos y sus 21 puntos: muñeca, pulgar,
+   índice, medio, anular y meñique, con articulaciones y puntas.
+
+   Coordenadas: igual que Body Pose, ml5 multiplica los landmarks
+   normalizados por video.width / video.height (ver src_X en el
+   bundle), así que llegan en PÍXELES. Se normalizan al entrar.
+   ============================================================ */
+
+/* ---------- Hand Pose: configuración ---------- */
+
+const MANOS_MAXIMAS = 2;
+
+/** Confianza mínima por mano (ml5 da confianza por mano, no por punto). */
+const CONFIANZA_MANO = 0.35;
+
+/** Suavizado exponencial: 1 = sin suavizado, 0 = congelado. */
+const ALFA_MANOS = 0.45;
+
+/** Si una mano no se detecta en un frame, se sigue dibujando este tiempo. */
+const GRACIA_MANOS_MS = 250;
+
+/** Aviso si el modelo no termina de cargar. */
+const ESPERA_MANOS_MS = 45000;
+
+let handPose = null;
+let estadoManos = 'inactivo'; // 'inactivo' | 'cargando' | 'listo' | 'error'
+let manosActuales = []; // [{ handedness, confianza, keypoints: [{x,y}], actualizadoEn }]
+let conexionesManos = []; // pares de índices que dibuja el esqueleto de la mano
+let cargandoHandPose = false;
+let temporizadorManos = null;
+let ultimoPintadoManos = 0;
+let mensajeManos = 'Manos: esperando cámara…';
+
+/* ---------- Hand Pose: inicialización ---------- */
+
+/**
+ * Carga el modelo de manos y arranca su bucle de detección.
+ * Idempotente. Se llama cuando la cámara ya tiene frames.
+ */
+async function iniciarHandPose() {
+  if (handPose || cargandoHandPose) return;
+
+  if (typeof ml5 === 'undefined' || typeof ml5.handPose !== 'function') {
+    cambiarEstadoManos('error', 'Manos: ml5 no cargó.');
+    return;
+  }
+
+  const video = obtenerVideoCamara();
+  if (!video) {
+    cambiarEstadoManos('error', 'Manos: la cámara no está lista.');
+    return;
+  }
+
+  cargandoHandPose = true;
+  cambiarEstadoManos('cargando', 'Manos: cargando modelo…');
+  console.info('[handPose] Cargando MediaPipeHands…');
+
+  temporizadorManos = window.setTimeout(() => {
+    if (estadoManos === 'cargando') {
+      cambiarEstadoManos('error', 'Manos: el modelo no terminó de cargar. Revisá la conexión.');
+    }
+  }, ESPERA_MANOS_MS);
+
+  try {
+    // Misma trampa que bodyPose: con p5 2.x ml5 promisifica los constructores
+    // y esto devuelve una PROMESA. `await` funciona también con p5 1.x.
+    //
+    // modelType 'lite': hay dos modelos corriendo a la vez (cuerpo + manos).
+    // 'full' da más precisión; si la máquina va sobrada, se puede cambiar.
+    const instancia = await ml5.handPose({
+      maxHands: MANOS_MAXIMAS,
+      modelType: 'lite',
+      runtime: 'tfjs',
+    });
+
+    if (instancia && instancia.ready && typeof instancia.ready.then === 'function') {
+      await instancia.ready;
+    }
+
+    if (!instancia || typeof instancia.detectStart !== 'function') {
+      throw new Error('ml5 no devolvió un modelo de manos utilizable');
+    }
+
+    handPose = instancia;
+
+    // Las conexiones las informa el propio modelo: no se inventan índices.
+    conexionesManos =
+      typeof handPose.getConnections === 'function' ? handPose.getConnections() : [];
+
+    handPose.detectStart(video, alDetectarManos);
+
+    console.info('[handPose] Modelo listo: MediaPipeHands (lite)');
+    cambiarEstadoManos('listo', 'Manos: esperando…');
+  } catch (error) {
+    manejarErrorManos(error);
+  } finally {
+    cargandoHandPose = false;
+    if (temporizadorManos) {
+      window.clearTimeout(temporizadorManos);
+      temporizadorManos = null;
+    }
+  }
+}
+
+/** Detiene el bucle de manos y limpia el estado. */
+function detenerHandPose() {
+  if (handPose && handPose.detecting) handPose.detectStop();
+  manosActuales = [];
+  cambiarEstadoManos('inactivo', 'Manos: inactivo');
+}
+
+function manejarErrorManos(error) {
+  console.error('[handPose]', error);
+  const detalle = error instanceof Error ? error.message : String(error ?? 'error desconocido');
+  cambiarEstadoManos('error', `Manos: error del modelo (${detalle})`);
+}
+
+/* ---------- Hand Pose: detección ---------- */
+
+/**
+ * Callback de detectStart. Llega un array de manos (0, 1 o 2).
+ * Acá se normaliza, se filtra por confianza y se suaviza.
+ */
+function alDetectarManos(detectadas) {
+  const ahora = performance.now();
+
+  const validas = Array.isArray(detectadas)
+    ? detectadas.filter((mano) => (mano?.confidence ?? 0) >= CONFIANZA_MANO)
+    : [];
+
+  const nuevas = validas.map((mano) => normalizarMano(mano, ahora));
+  manosActuales = fusionarManos(nuevas, ahora);
+
+  pintarManos();
+}
+
+/** Pasa una mano cruda de ml5 a coordenadas 0..1 con forma estable. */
+function normalizarMano(mano, ahora) {
+  const video = obtenerVideoCamara();
+
+  // ml5 escala los landmarks con los atributos width/height del <video>.
+  const ancho = (video && (video.width || video.videoWidth)) || 1;
+  const alto = (video && (video.height || video.videoHeight)) || 1;
+
+  const keypoints = (mano.keypoints || []).map((punto) => ({
+    x: punto.x / ancho,
+    y: punto.y / alto,
+  }));
+
+  return {
+    handedness: typeof mano.handedness === 'string' ? mano.handedness : 'unknown',
+    confianza: typeof mano.confidence === 'number' ? mano.confidence : 0,
+    keypoints,
+    actualizadoEn: ahora,
+  };
+}
+
+/**
+ * Mezcla las manos nuevas con las que ya veníamos mostrando:
+ *  1. suaviza cada mano contra su versión anterior (misma etiqueta),
+ *  2. mantiene viva unos ms una mano que no se detectó en este frame.
+ * Eso es lo que evita el parpadeo cuando la mano se mueve rápido.
+ */
+function fusionarManos(nuevas, ahora) {
+  const resultado = [];
+  const libres = [...manosActuales];
+
+  for (const nueva of nuevas) {
+    let indice = libres.findIndex((previa) => previa.handedness === nueva.handedness);
+    if (indice < 0 && libres.length > 0) indice = 0;
+
+    const previa = indice >= 0 && libres.length > 0 ? libres.splice(indice, 1)[0] : null;
+    resultado.push(previa ? suavizarMano(previa, nueva) : nueva);
+  }
+
+  for (const sobrante of libres) {
+    if (ahora - sobrante.actualizadoEn < GRACIA_MANOS_MS) resultado.push(sobrante);
+  }
+
+  return resultado.slice(0, MANOS_MAXIMAS);
+}
+
+/** Interpola los 21 puntos contra la detección anterior. */
+function suavizarMano(previa, nueva) {
+  if (previa.keypoints.length !== nueva.keypoints.length) return nueva;
+
+  return {
+    handedness: nueva.handedness,
+    confianza: nueva.confianza,
+    actualizadoEn: nueva.actualizadoEn,
+    keypoints: nueva.keypoints.map((punto, indice) => ({
+      x: previa.keypoints[indice].x + (punto.x - previa.keypoints[indice].x) * ALFA_MANOS,
+      y: previa.keypoints[indice].y + (punto.y - previa.keypoints[indice].y) * ALFA_MANOS,
+    })),
+  };
+}
+
+/* ---------- Hand Pose: lectura en pantalla ---------- */
+
+/** Actualiza el contador de manos detectadas. Throttled como el resto. */
+function pintarManos(forzar = false) {
+  const ahora = performance.now();
+  if (!forzar && ahora - ultimoPintadoManos < REFRESCO_LECTURA_MS) return;
+  ultimoPintadoManos = ahora;
+
+  const elemento = document.getElementById('manos-estado');
+  if (!elemento) return;
+
+  let estadoVisual = 'inactivo';
+  let texto = mensajeManos;
+
+  if (estadoManos === 'cargando') {
+    estadoVisual = 'parcial';
+  } else if (estadoManos === 'error') {
+    estadoVisual = 'error';
+  } else if (estadoManos === 'listo') {
+    const cantidad = manosActuales.length;
+    if (cantidad === 0) {
+      estadoVisual = 'parcial';
+      texto = 'Manos: ninguna detectada';
+    } else {
+      estadoVisual = 'listo';
+      texto = `Manos: ${cantidad} ${cantidad === 1 ? 'detectada' : 'detectadas'}`;
+    }
+  }
+
+  elemento.dataset.estado = estadoVisual;
+  if (elemento.textContent !== texto) elemento.textContent = texto;
+}
+
+function cambiarEstadoManos(estado, mensaje) {
+  estadoManos = estado;
+  if (mensaje) mensajeManos = mensaje;
+  pintarManos(true);
+}
+
+/* ---------- Hand Pose: API pública ---------- */
+
+/**
+ * Manos detectadas, ya normalizadas y suavizadas.
+ *
+ *   const manos = obtenerManos();      // 0, 1 o 2
+ *   manos[0].handedness                 // 'Left' | 'Right' (según la cámara)
+ *   manos[0].keypoints[8]               // punta del índice, { x, y } en 0..1
+ *
+ * Los índices siguen el orden de MediaPipe: 0 muñeca, 1-4 pulgar,
+ * 5-8 índice, 9-12 medio, 13-16 anular, 17-20 meñique.
+ * Para dibujar sobre la imagen espejada: mapearPuntoCamara(x, y).
+ */
+function obtenerManos() {
+  return manosActuales;
+}
+
+/** Estado del modelo de manos: 'inactivo' | 'cargando' | 'listo' | 'error'. */
+function obtenerEstadoManos() {
+  return estadoManos;
+}
+
+/** Pares de índices que forman el esqueleto de la mano (los da ml5). */
+function obtenerConexionesManos() {
+  return conexionesManos;
 }

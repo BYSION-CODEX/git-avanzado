@@ -23,8 +23,15 @@
  */
 const DEPURACION_POSE = true;
 
+/**
+ * Interruptor del esqueleto de manos.
+ *   true  -> dibuja los 21 puntos y las conexiones de cada mano
+ *   false -> no dibuja manos; el resto del modo sigue igual
+ */
+const DEPURACION_MANOS = true;
+
 (function () {
-  if (!DEPURACION_POSE) return;
+  if (!DEPURACION_POSE && !DEPURACION_MANOS) return;
 
   /* ---------- Configuración ---------- */
 
@@ -74,6 +81,10 @@ const DEPURACION_POSE = true;
   const COLOR_PARCIAL = '#e0b25f';
   const COLOR_FALLA = '#e2707a';
 
+  // Manos: un color por lado para distinguirlas de un vistazo.
+  const COLOR_MANO_IZQ = '#8ef0c0';
+  const COLOR_MANO_DER = '#ff9ecb';
+
   /* ---------- Estado del módulo ---------- */
 
   let lienzo = null;
@@ -84,14 +95,18 @@ const DEPURACION_POSE = true;
   /* ---------- Arranque ---------- */
 
   function iniciar() {
-    // Si sketch.js no cargó, este módulo no tiene de dónde leer.
-    if (
-      typeof obtenerEstadoPose !== 'function' ||
-      typeof obtenerPoseBusto !== 'function' ||
-      typeof mapearPuntoCamara !== 'function'
-    ) {
-      console.warn('[debugPose] sketch.js no expone la API necesaria; modo depuración apagado.');
+    // Sin la función de mapeo no hay forma de alinear nada con la imagen.
+    if (typeof mapearPuntoCamara !== 'function') {
+      console.warn('[debugPose] falta mapearPuntoCamara(); modo depuración apagado.');
       return;
+    }
+
+    if (DEPURACION_POSE && typeof obtenerPoseBusto !== 'function') {
+      console.warn('[debugPose] sin API de cuerpo; se omite el esqueleto corporal.');
+    }
+
+    if (DEPURACION_MANOS && typeof obtenerManos !== 'function') {
+      console.warn('[debugPose] sin API de manos; se omite el dibujo de manos.');
     }
 
     lienzo = document.getElementById('pose-overlay');
@@ -118,6 +133,14 @@ const DEPURACION_POSE = true;
 
     ctx.clearRect(0, 0, anchoCSS, altoCSS);
 
+    dibujarCuerpo();
+    dibujarManos();
+  }
+
+  /** Esqueleto corporal + indicador de estado. */
+  function dibujarCuerpo() {
+    if (!DEPURACION_POSE || typeof obtenerPoseBusto !== 'function') return;
+
     const estado = obtenerEstadoPose();
 
     // Sin cámara no hay nada que anotar: el panel muestra su propio mensaje.
@@ -127,6 +150,59 @@ const DEPURACION_POSE = true;
     if (pose) dibujarEsqueleto(pose);
 
     dibujarIndicador(estado, pose);
+  }
+
+  /** Puntos y conexiones de cada mano detectada. */
+  function dibujarManos() {
+    if (!DEPURACION_MANOS || typeof obtenerManos !== 'function') return;
+
+    const manos = obtenerManos();
+    if (!manos || manos.length === 0) return;
+
+    // Los pares de conexiones los informa ml5 (getConnections); no se inventan.
+    const conexiones =
+      typeof obtenerConexionesManos === 'function' ? obtenerConexionesManos() : [];
+
+    for (const mano of manos) {
+      const puntos = mano.keypoints.map((punto) => {
+        const mapeado = mapearPuntoCamara(punto.x, punto.y);
+        return mapeado.visible ? { x: mapeado.x * anchoCSS, y: mapeado.y * altoCSS } : null;
+      });
+
+      const color = mano.handedness === 'Left' ? COLOR_MANO_IZQ : COLOR_MANO_DER;
+
+      // Conexiones: solo si los dos extremos existen y están dentro del marco.
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = color;
+
+      for (const [desde, hasta] of conexiones) {
+        const a = puntos[desde];
+        const b = puntos[hasta];
+        if (!a || !b) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
+
+      for (let indice = 0; indice < puntos.length; indice += 1) {
+        const punto = puntos[indice];
+        if (!punto) continue;
+        dibujarPunto(punto.x, punto.y, radioDePuntoDeMano(indice), color);
+      }
+    }
+  }
+
+  /** La muñeca y las puntas de los dedos se marcan un poco más grandes. */
+  function radioDePuntoDeMano(indice) {
+    if (indice === 0) return 4.2;
+    if (indice % 4 === 0) return 3.4; // 4, 8, 12, 16, 20 → puntas
+    return 2.6;
   }
 
   /** Mantiene el canvas del tamaño exacto del marco, con densidad de pantalla. */

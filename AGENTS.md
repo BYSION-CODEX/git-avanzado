@@ -5,9 +5,10 @@ sin build, sin package manager, sin tests.
 
 ## Estado
 
-Estructura base + captura de video + reconocimiento corporal (ml5.js Body Pose
-con MoveNet). Se leen nariz, ojos, orejas, hombros, codos, muñecas y caderas.
-**No hay interacciones, ni gestos, ni animación**: el escenario sigue estático.
+Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos).
+Del cuerpo se leen nariz, ojos, orejas, hombros, codos, muñecas y caderas; de
+las manos, los 21 puntos de cada una. **No hay interacciones, ni gestos, ni
+animación**: el escenario sigue estático.
 
 Estados de la cámara en `sketch.js`, reflejados en `data-estado` del contenedor:
 `iniciando` → `lista` → o `error`. Ojo: `createCapture` **solo llama al callback
@@ -41,7 +42,7 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `index.html` | documento único: contenedor principal, espacio de cámara, espacio de lienzo y carga de librerías |
 | `style.css` | todos los estilos de la interfaz |
 | `sketch.js` | `setup()` / `draw()` de p5.js en modo global, cámara y Body Pose |
-| `debug-pose.js` | modo depuración: dibuja el esqueleto sobre la cámara |
+| `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
 
 Cuatro archivos. Si aparece un módulo nuevo, registrarlo en `index.html` en el
 orden correcto y documentarlo acá.
@@ -125,6 +126,27 @@ orden correcto y documentarlo acá.
   invertiría todo dos veces.
 - Sin persona en cuadro el callback recibe un array vacío (`[]`), no un error:
   la ausencia de detección es un estado normal, no una excepción.
+
+## Hand Pose (ml5 1.4.0) — contrato verificado contra el bundle
+
+- **También es constructor asíncrono con p5 2.x**: `await ml5.handPose({...})`.
+  Sin `await` devuelve un Promise y cualquier `.ready` sobre él es `undefined`.
+- Opciones: `maxHands` (default 2), `modelType` (`lite`|`full`, default `full`),
+  `runtime` (`tfjs`|`mediapipe`, **default `tfjs`**), `solutionPath` (sólo
+  mediapipe), `detectorModelUrl` / `landmarkModelUrl` (sólo tfjs).
+  Usamos `tfjs` + `lite` porque ya corre MoveNet al mismo tiempo.
+- **Los 21 keypoints llegan en PÍXELES**, no normalizados: ml5 los multiplica por
+  `video.width` / `video.height` (`src_X` en el bundle). Normalizar al entrar.
+- **No hay confianza por punto**, sólo `hand.confidence` por mano. El filtro de
+  confianza es por mano, no por dedo.
+- `hand.handedness` es un **string** (`'Left'` / `'Right'`), no un array.
+- Nombres e índices (MediaPipe): 0 `wrist`; 1-4 pulgar; 5-8 índice;
+  9-12 medio; 13-16 anular; 17-20 meñique. El sufijo del meñique es
+  `pinky_finger_*` (con `_finger`).
+- `handPose.getConnections()` devuelve los pares de índices del esqueleto.
+  Usarlos en vez de hardcodear las 21 conexiones.
+- ml5 **no suaviza** las manos (no hay `enableSmoothing` como en MoveNet): el
+  suavizado y la gracia anti-parpadeo los hace `fusionarManos()` en `sketch.js`.
 
 ## Git
 
