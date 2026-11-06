@@ -47,9 +47,11 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
 | `planta.js` | crecimiento de la planta con el gesto de puño, en su propia capa |
 | `personaje.png` | sprite del personaje que camina en el fondo (**asset obligatorio**: sin él no aparece) |
+| `flor.png` | ilustración de la planta (PNG con transparencia; **asset obligatorio**: sin él la planta no aparece) |
 
-Cinco archivos de código más el sprite. Si aparece un módulo nuevo, registrarlo
-en `index.html` en el orden correcto y documentarlo acá.
+Cinco archivos de código y dos imágenes (el sprite del personaje y la flor). Si
+aparece un módulo nuevo, registrarlo en `index.html` en el orden correcto y
+documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
@@ -314,6 +316,20 @@ parte en dos capas:
   inviable. `#planta-overlay` es un canvas transparente encima del de p5, mismo
   rectángulo, así las coordenadas coinciden sin conversiones.
 - Por eso `sketch.js` **no** se tocó: ni `setup()`, ni `draw()`, ni el paisaje.
+- **La flor es una ilustración, no un dibujo por código.** `flor.png` es la
+  fuente única: se dibuja tal cual, con sus colores, pétalos y proporciones.
+  `planta.js` no redibuja nada; solo la escala, la inclina, la sacude y la
+  revela. El PNG tiene que venir recortado al contenido y con el tallo tocando
+  el borde inferior: la imagen se ancla por su base contra el suelo.
+- **Crecimiento = escala uniforme anclada en la base**: el alto dibujado es
+  `alto * ALTURA_MAXIMA * crecimiento` y el ancho sale de la proporción real del
+  PNG (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la
+  base queda clavada sobre el suelo mientras la flor crece hacia arriba.
+- `ALTURA_MAXIMA` (0.42) es la fracción del alto del lienzo que ocupa la flor al
+  100%; la posición horizontal es el centro del lienzo, igual que antes.
+- La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
+  no está lista no se dibuja; si falta el archivo, el resto de la experiencia
+  sigue andando y solo se pierde la planta.
 - Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
   y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
 - Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
@@ -336,15 +352,21 @@ parte en dos capas:
 - **Estado separado del crecimiento**: `florecimiento` (0..1) depende solo de
   que haya una mano abierta (`mano.gesto.estado === 'abierta'`). Abrir o cerrar
   la mano **no toca** `crecimiento` ni `objetivo`: la altura se conserva.
-- Sin mano abierta el objetivo de floración vuelve a 0, así que los pétalos se
-  cierran progresivamente (también al hacer puño).
-- `VELOCIDAD_FLORACION` (2.6) es menor que `VELOCIDAD_CRECIMIENTO` (4.5): las
-  flores abren más lento que el crecimiento, y se siente natural.
-- Tres flores (`FLORES`) sobre el tallo con `desfase` escalonado, para que no
-  se abran todas en el mismo frame.
-- Pétalo cerrado = óvalo chico apretado contra el centro; abierto = el mismo
-  óvalo estirado y separado. La interpolación es continua: no hay salto entre
-  capullo y flor.
+- Sin mano abierta el objetivo de floración vuelve a 0, así que la corola se
+  vuelve a cerrar progresivamente (también al hacer puño).
+- `VELOCIDAD_FLORACION` (2.6) es menor que `VELOCIDAD_CRECIMIENTO` (4.5): la
+  flor abre más lento que el crecimiento, y se siente natural.
+- **La corola se revela, no se deforma.** Con la mano abierta un degradado
+  radial (`COROLA` en `planta.js`, en fracciones del alto de la ilustración)
+  descubre la flor desde su base hacia afuera: `radioMinimo` es el capullo y
+  `radioMaximo` cubre la corola entera. Los pétalos nunca se estiran ni se
+  comprimen; se dejan de tapar.
+- **El tallo y las hojas no florecen.** Debajo de `COROLA.juntura` la imagen se
+  repinta completa, así la flor siempre queda unida al suelo y el revelado no
+  puede cortar el tallo.
+- Técnica: `globalCompositeOperation = 'destination-in'` con el degradado, y
+  después `source-over` + `clip` para repintar la parte baja. A `florecimiento`
+  ≥ 0.999 se saltea la máscara y se ve la ilustración original completa.
 - Verificado en Node simulando 60 fps: puño a y=0.45 → crecimiento 0.75;
   luego mano abierta → floración 0.99 y **crecimiento sigue en 0.75**; al cerrar
   → floración 0 y altura intacta; sin manos → se cierra solo.
@@ -363,6 +385,9 @@ parte en dos capas:
 - El temblor **pivota en la base** de la planta (`translate`/`rotate`/
   `translate`), no la traslada: es un tallo que se sacude, no un objeto que se
   desliza.
+- El temblor son **dos armónicos** (`FRECUENCIA_TEMBLOR` 0.019 rad/ms ≈ 3 Hz,
+  más un segundo a 1.73× con 35 % de amplitud): se lee como un tallo que vibra,
+  no como un metrónomo. `AMPLITUD_TEMBLOR` (0.06 rad) es el pico a intensidad 1.
 - Partículas: máximo `MAX_PARTICULAS` (140), emisión `EMISION_MAXIMA` por segundo
   × intensidad. Cada una con tamaño, velocidad y vida aleatorios; frenan por
   roce y flotan hacia arriba. El alfa cae con la vida restante, así desaparecen
@@ -383,14 +408,18 @@ parte en dos capas:
 - Zona muerta `ANGULO_MUERTO` (0.1 rad ≈ 6°) y saturación en `ANGULO_MAXIMO`
   (0.6 rad ≈ 34°), que corresponde a `INCLINACION_MAXIMA` (0.28 rad ≈ 16°) de
   la planta.
-- Suavizado con amortiguación exponencial, y **más lento al volver**
-  (`VELOCIDAD_REGRESO` 1.8) que al seguir (`VELOCIDAD_INCLINACION` 6). Sin
-  manos también vuelve a 0.
-- El ángulo final de dibujo es `inclinacion + temblor`: la inclinación y la
-  sacudida se suman sin pisarse.
-- Verificado en Node: mano recta → 0°; inclinada 28° → 12.8° de planta;
-  simétrica a izquierda; proporcional; regreso lento (tras 1 frame todavía
-  estaba al 97%) y vuelta a 0.
+- **Resorte amortiguado, no lerp**: `RESORTE_INCLINACION` da inercia y un
+  asentamiento corto. Seguir la mano es más rígido (`rigidezSeguir` 60) que
+  volver al centro (`rigidezVolver` 16), así el regreso sigue siendo lento. Se
+  integra en subpasos de 1/120 s para que un `dt` grande no lo desestabilice.
+  Sin manos también vuelve a 0.
+- **Vaivén ambiental**: `balanceoDelAire()` suma un mecido lento que lee
+  `fuerzaViento` y `direccionViento` de `sketch.js`, el mismo viento de los
+  árboles. Es solo presentación: no toca `inclinacion` ni la lógica del gesto.
+- El ángulo final de dibujo es `inclinacion + temblor + balanceoDelAire`: la
+  mano, la sacudida y el viento se suman sin pisarse.
+- Verificado con el banco headless: mano inclinada → `incl=0.280` y vuelve a
+  `incl=0.000` al enderezarla; sacudida → `sacu=1.000` con 56 partículas.
 
 ### Integración entre interacciones (revisado)
 

@@ -6,6 +6,9 @@
    del mismo tamaño que el de p5 se limpia y se repinta a 60 fps, y así el
    crecimiento no obliga a repintar el fondo ni el pasto.
 
+   La flor es la ilustración `flor.png`: acá no se redibuja, solo se escala,
+   se inclina, se sacude y se revela. La interacción es la misma de siempre.
+
    Entradas: obtenerManos() de sketch.js (manos normalizadas 0..1, ya
    suavizadas, con su gesto). Salidas: la planta y el porcentaje en el
    panel de cámara.
@@ -40,22 +43,24 @@
   /** El florecimiento va más lento que el crecimiento: se siente natural. */
   const VELOCIDAD_FLORACION = 2.6;
 
-  const COLOR_TALLO = '#7a8470';
-  const COLOR_HOJA = '#9aab86';
-  const COLOR_PETALO = '#e6d3ae';
-  const COLOR_CENTRO = '#caa46a';
-
-  const PETALOS = 6;
+  /** Ilustración de la flor: PNG con transparencia, se dibuja tal cual. */
+  const ARCHIVO_FLOR = 'flor.png';
 
   /**
-   * Flores sobre el tallo. `t` es la posición (0 base, 1 punta) y `desfase`
-   * escalona la apertura para que no se abran todas a la vez.
+   * Geometría del florecimiento, en fracciones del alto de la ilustración.
+   *
+   * La corola se descubre desde su base —donde nace del tallo— hacia afuera.
+   * Es un revelado, no una deformación: los pétalos no se estiran, se dejan de
+   * tapar. `radioMaximo` cubre la corola entera cuando florecimiento llega a 1.
    */
-  const FLORES = [
-    { t: 1, lado: 0, escala: 1, desfase: 0 },
-    { t: 0.9, lado: -1, escala: 0.7, desfase: 0.1 },
-    { t: 0.84, lado: 1, escala: 0.62, desfase: 0.2 },
-  ];
+  const COROLA = {
+    centroX: 0.5,
+    centroY: 0.3,
+    radioMinimo: 0.13,
+    radioMaximo: 0.4,
+    suavizado: 0.03,
+    juntura: 0.318,
+  };
 
   /* ---------- Sacudida ---------- */
 
@@ -73,9 +78,9 @@
   const ATAQUE_SACUDIDA = 14;
   const RELAJO_SACUDIDA = 3.5;
 
-  /** Temblor: amplitud en radianes y frecuencia angular por milisegundo. */
-  const AMPLITUD_TEMBLOR = 0.09;
-  const FRECUENCIA_TEMBLOR = 0.045;
+  /** Temblor de la sacudida: dos armónicos, a la frecuencia de un tallo real. */
+  const AMPLITUD_TEMBLOR = 0.06;
+  const FRECUENCIA_TEMBLOR = 0.019; // rad/ms ≈ 3 Hz
 
   const MAX_PARTICULAS = 140;
   const EMISION_MAXIMA = 70; // partículas por segundo a intensidad 1
@@ -92,9 +97,28 @@
   /** Inclinación máxima de la planta en radianes (~16°). */
   const INCLINACION_MAXIMA = 0.28;
 
-  /** Volver al centro es más lento que seguir la mano. */
-  const VELOCIDAD_INCLINACION = 6;
-  const VELOCIDAD_REGRESO = 1.8;
+  /**
+   * La inclinación es un resorte amortiguado, no un lerp: la flor tiene inercia,
+   * acompaña la mano y se asienta sola con un vaivén corto. Seguir la mano es
+   * más rígido que volver al centro, igual que antes.
+   */
+  const RESORTE_INCLINACION = {
+    rigidezSeguir: 60,
+    amortiguacionSeguir: 10,
+    rigidezVolver: 16,
+    amortiguacionVolver: 7,
+  };
+
+  /**
+   * Vaivén ambiental: la flor se mece con el MISMO viento que los árboles.
+   * Lee `fuerzaViento` y `direccionViento` de sketch.js; es solo dibujo, no
+   * toca la inclinación que controla la mano.
+   */
+  const VIENTO_PLANTA = {
+    amplitud: 0.035, // rad a viento máximo (~2°)
+    velocidad: 1.7, // rad/s del vaivén, como los árboles
+    velocidadDeriva: 0.35, // rad/s de la deriva lenta
+  };
 
   /** Proporción del alto del lienzo que ocupa la planta al 100%. */
   const ALTURA_MAXIMA = 0.42;
@@ -109,7 +133,7 @@
   let crecimiento = 0; // valor mostrado (suavizado) 0..1
   let objetivo = 0; // nivel elegido 0..1
   let indiceNivel = 0; // nivel actual, para la histéresis
-  let florecimiento = 0; // apertura de los pétalos 0..1
+  let florecimiento = 0; // revelado de la corola 0..1
   let objetivoFloracion = 0;
   let ultimoFrame = 0;
   let ultimoTexto = 0;
@@ -117,11 +141,16 @@
   let intensidadSacudida = 0; // 0..1, ya suavizada
   let congelarAltura = false; // true cuando la mano va rápido o está sacudiendo
   let inclinacion = 0; // radianes, ya suavizada
+  let velocidadInclinacion = 0; // rad/s, para el resorte
   let objetivoInclinacion = 0;
   let particulas = [];
   let acumuladorEmision = 0;
   let relojDebug = 0;
   const estadosSacudida = {}; // un estado por mano (clave: handedness)
+
+  let imagenFlor = null;
+  let imagenLista = false;
+  let proporcionFlor = 1; // ancho / alto, se lee al cargar la ilustración
 
   /* ---------- Arranque ---------- */
 
@@ -135,7 +164,25 @@
     ctx = lienzo.getContext('2d');
     if (!ctx) return;
 
+    cargarFlor();
     requestAnimationFrame(bucle);
+  }
+
+  /**
+   * La ilustración se carga con callbacks, como el personaje: hasta que no
+   * está lista no se dibuja nada. Si falta el archivo, la experiencia sigue
+   * andando y solo se pierde la planta.
+   */
+  function cargarFlor() {
+    imagenFlor = new Image();
+    imagenFlor.onload = () => {
+      proporcionFlor = imagenFlor.naturalWidth / imagenFlor.naturalHeight;
+      imagenLista = true;
+    };
+    imagenFlor.onerror = () => {
+      console.warn('[planta] No se pudo cargar ' + ARCHIVO_FLOR + '; la planta no se dibuja.');
+    };
+    imagenFlor.src = ARCHIVO_FLOR;
   }
 
   function bucle(ahora) {
@@ -314,14 +361,38 @@
     const objetivo = objetivoInclinacionDesdeManos();
     objetivoInclinacion = objetivo === null ? 0 : objetivo;
 
-    // Volver al centro se siente mejor más lento que seguir la mano.
-    const rapidez =
-      Math.abs(objetivoInclinacion) < 0.01 ? VELOCIDAD_REGRESO : VELOCIDAD_INCLINACION;
+    // Seguir la mano es más rígido que volver al centro: mismo contraste de
+    // antes, ahora con inercia de resorte y no con un lerp.
+    const siguiendo = objetivo !== null;
+    const rigidez = siguiendo
+      ? RESORTE_INCLINACION.rigidezSeguir
+      : RESORTE_INCLINACION.rigidezVolver;
+    const amortiguacion = siguiendo
+      ? RESORTE_INCLINACION.amortiguacionSeguir
+      : RESORTE_INCLINACION.amortiguacionVolver;
 
-    const factor = 1 - Math.exp(-rapidez * dt);
-    inclinacion += (objetivoInclinacion - inclinacion) * factor;
+    // Subpasos: con un dt grande (pestaña en segundo plano) el resorte
+    // explícito se vuelve inestable.
+    let restante = dt;
+    while (restante > 0) {
+      const paso = Math.min(restante, 1 / 120);
+      const aceleracion =
+        (objetivoInclinacion - inclinacion) * rigidez - velocidadInclinacion * amortiguacion;
 
-    if (Math.abs(objetivoInclinacion - inclinacion) < 0.0005) inclinacion = objetivoInclinacion;
+      velocidadInclinacion += aceleracion * paso;
+      inclinacion += velocidadInclinacion * paso;
+      restante -= paso;
+    }
+
+    inclinacion = limitar(inclinacion, -0.34, 0.34);
+
+    if (
+      Math.abs(objetivoInclinacion - inclinacion) < 0.0005 &&
+      Math.abs(velocidadInclinacion) < 0.0005
+    ) {
+      inclinacion = objetivoInclinacion;
+      velocidadInclinacion = 0;
+    }
   }
 
   function objetivoInclinacionDesdeManos() {
@@ -570,20 +641,24 @@
 
   /* ---------- Dibujo ---------- */
 
+  /**
+   * La ilustración entera, escalada de forma uniforme con el crecimiento y
+   * anclada en el suelo: la base queda fija y la flor crece hacia arriba.
+   * No se recorta ni se deforma, así que la proporción original se conserva.
+   */
   function dibujarPlanta(ancho, alto, ahora) {
-    if (crecimiento <= 0.004) return;
+    if (!imagenLista || crecimiento <= 0.004) return;
 
     const base = baseDeLaPlanta(ancho, alto);
-    const altura = alto * ALTURA_MAXIMA * crecimiento;
+    const alturaDibujo = alto * ALTURA_MAXIMA * crecimiento;
+    const anchoDibujo = alturaDibujo * proporcionFlor;
+    const x = base.x - anchoDibujo * 0.5;
+    const y = base.y - alturaDibujo;
 
     // El temblor pivota en la base, como un tallo real: no se traslada entero.
     ctx.save();
 
-    const temblor =
-      intensidadSacudida > 0.001
-        ? Math.sin(ahora * FRECUENCIA_TEMBLOR) * intensidadSacudida * AMPLITUD_TEMBLOR
-        : 0;
-    const anguloPlanta = inclinacion + temblor;
+    const anguloPlanta = inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora);
 
     if (Math.abs(anguloPlanta) > 0.001) {
       ctx.translate(base.x, base.y);
@@ -591,116 +666,87 @@
       ctx.translate(-base.x, -base.y);
     }
 
-    // Tallo: una curva suave, más gruesa cuanto más creció.
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = COLOR_TALLO;
-    ctx.lineWidth = Math.max(1.2, 5 * crecimiento);
+    ctx.drawImage(imagenFlor, x, y, anchoDibujo, alturaDibujo);
 
-    ctx.beginPath();
-    const segmentos = 12;
-    for (let i = 0; i <= segmentos; i += 1) {
-      const t = i / segmentos;
-      const punto = puntoDelTallo(base, altura, t);
-      if (i === 0) ctx.moveTo(punto.x, punto.y);
-      else ctx.lineTo(punto.x, punto.y);
-    }
-    ctx.stroke();
+    // Con la mano abierta la corola se descubre; a 1 se ve la ilustración
+    // completa y no hace falta enmascarar nada.
+    if (florecimiento < 0.999) revelarCorola(x, y, anchoDibujo, alturaDibujo);
 
-    // Hojas: aparecen a medida que la planta pasa su altura.
-    const hojas = [
-      { t: 0.32, lado: -1 },
-      { t: 0.55, lado: 1 },
-      { t: 0.78, lado: -1 },
-    ];
-
-    ctx.fillStyle = COLOR_HOJA;
-    for (const hoja of hojas) {
-      if (crecimiento < hoja.t) continue;
-      const punto = puntoDelTallo(base, altura, hoja.t);
-      const tamano = altura * 0.16 * (0.5 + hoja.t * 0.7);
-      dibujarHoja(punto.x, punto.y, tamano, hoja.lado);
-    }
-
-    dibujarFlores(base, altura);
     ctx.restore();
-  }
-
-  /** Flores en el extremo del tallo y en dos tallitos laterales. */
-  function dibujarFlores(base, altura) {
-    if (altura < 10) return;
-
-    for (const flor of FLORES) {
-      const punto = puntoDelTallo(base, altura, flor.t);
-      const tallo = altura * 0.07 * flor.escala;
-
-      let x = punto.x;
-      let y = punto.y;
-
-      if (flor.lado !== 0) {
-        x = punto.x + flor.lado * tallo;
-        y = punto.y - tallo * 0.5;
-
-        ctx.strokeStyle = COLOR_TALLO;
-        ctx.lineWidth = Math.max(1, 1.6 * crecimiento);
-        ctx.beginPath();
-        ctx.moveTo(punto.x, punto.y);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-      }
-
-      // Cada flor arranca un poco después que la anterior.
-      const apertura = limitar((florecimiento - flor.desfase) / (1 - flor.desfase), 0, 1);
-      dibujarFlor(x, y, altura * 0.085 * flor.escala, apertura);
-    }
   }
 
   /**
-   * Un pétalo cerrado es un óvalo chico y apretado contra el centro; abierto,
-   * el mismo óvalo se estira y se aleja. La interpolación es continua, así que
-   * no hay salto entre "capullo" y "flor".
+   * Temblor de la sacudida. Dos armónicos en vez de un seno puro: el tallo se
+   * ve vibrar, no oscilar como un metrónomo. La intensidad ya viene suavizada
+   * por `actualizarSacudida`.
    */
-  function dibujarFlor(x, y, tamano, apertura) {
-    const desde = -Math.PI / 2;
+  function temblorDeSacudida(ahora) {
+    if (intensidadSacudida <= 0.001) return 0;
 
-    ctx.fillStyle = COLOR_PETALO;
+    const base = Math.sin(ahora * FRECUENCIA_TEMBLOR);
+    const armonico = Math.sin(ahora * FRECUENCIA_TEMBLOR * 1.73 + 1.1) * 0.35;
 
-    for (let i = 0; i < PETALOS; i += 1) {
-      const angulo = desde + ((Math.PI * 2) / PETALOS) * i;
-      const largo = tamano * (0.22 + 0.78 * apertura);
-      const ancho = tamano * (0.3 + 0.1 * apertura);
-      const distancia = tamano * (0.1 + 0.55 * apertura);
-
-      ctx.save();
-      ctx.translate(x + Math.cos(angulo) * distancia, y + Math.sin(angulo) * distancia);
-      ctx.rotate(angulo + Math.PI / 2);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, ancho, largo, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    ctx.fillStyle = COLOR_CENTRO;
-    ctx.beginPath();
-    ctx.arc(x, y, tamano * (0.14 + 0.1 * apertura), 0, Math.PI * 2);
-    ctx.fill();
+    return (base + armonico) * intensidadSacudida * AMPLITUD_TEMBLOR;
   }
 
-  /** Punto del tallo en t = 0 (base) .. 1 (punta). Curva determinista. */
-  function puntoDelTallo(base, altura, t) {
-    return {
-      x: base.x + Math.sin(t * 2.1) * altura * 0.06,
-      y: base.y - altura * t,
-    };
+  /**
+   * Vaivén ambiental con el viento de la escena. Es solo presentación: se suma
+   * al ángulo de dibujo y no toca `inclinacion`, que sigue siendo la que manda
+   * la mano. En el banco de pruebas, sin sketch.js, usa un viento suave.
+   */
+  function balanceoDelAire(ahora) {
+    const segundos = ahora * 0.001;
+    const fuerza = typeof fuerzaViento === 'number' ? limitar(fuerzaViento, 0, 1) : 0.35;
+    const empuje = typeof direccionViento === 'number' ? direccionViento : 1;
+
+    const vaiven =
+      Math.sin(segundos * VIENTO_PLANTA.velocidad + 0.7) * 0.45 + fuerza * 0.55;
+    const deriva = Math.sin(segundos * VIENTO_PLANTA.velocidadDeriva + 2.1) * 0.2;
+
+    return (vaiven + deriva) * VIENTO_PLANTA.amplitud * empuje;
   }
 
-  function dibujarHoja(x, y, tamano, lado) {
+  /**
+   * Florecimiento sin tocar la ilustración: la corola se descubre desde su
+   * base hacia afuera con un degradado radial. El tallo y las hojas quedan
+   * siempre completos, así que la flor nunca se separa del suelo.
+   */
+  function revelarCorola(x, y, ancho, alto) {
+    const centroX = x + ancho * COROLA.centroX;
+    const centroY = y + alto * COROLA.centroY;
+    const radio =
+      alto *
+      (COROLA.radioMinimo + (COROLA.radioMaximo - COROLA.radioMinimo) * florecimiento);
+    const borde = radio + alto * COROLA.suavizado;
+
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(lado * -0.55);
+
+    const degradado = ctx.createRadialGradient(centroX, centroY, 0, centroX, centroY, borde);
+    degradado.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    degradado.addColorStop(radio / borde, 'rgba(0, 0, 0, 1)');
+    degradado.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    // `destination-in` deja solo lo que cae dentro del degradado.
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = degradado;
+    ctx.fillRect(x, y, ancho, alto);
+
+    // El tallo y las hojas no florecen: se repintan completos.
+    ctx.globalCompositeOperation = 'source-over';
     ctx.beginPath();
-    ctx.ellipse(lado * tamano * 0.9, 0, tamano * 2, tamano * 0.75, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.rect(x, y + alto * COROLA.juntura, ancho, alto * (1 - COROLA.juntura));
+    ctx.clip();
+    ctx.drawImage(imagenFlor, x, y, ancho, alto);
+
     ctx.restore();
+  }
+
+  /**
+   * Punto del tallo en t = 0 (base) .. 1 (punta). El tallo de la ilustración
+   * es recto y vertical, así que las partículas nacen exactamente sobre él.
+   */
+  function puntoDelTallo(base, altura, t) {
+    return { x: base.x, y: base.y - altura * t };
   }
 
   /**
