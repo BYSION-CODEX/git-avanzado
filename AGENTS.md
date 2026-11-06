@@ -7,7 +7,8 @@ sin build, sin package manager, sin tests.
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
 gestos (mano abierta / puño) + planta que crece y florece + paisaje animado por
-viento + personaje que camina en el fondo y se entristece. Del cuerpo se leen
+viento + árboles que reverdecen con ese crecimiento mientras haya manos en
+cuadro + personaje que camina en el fondo y se entristece. Del cuerpo se leen
 nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
 puntos de cada una.
 
@@ -87,6 +88,63 @@ parte en dos capas:
   la ventana reconstruiría el fondo y los 13 sprites en cada evento.
 - `SEMILLA` se vuelve a fijar al construir: la composición es idéntica en cada
   sesión y en cada resize.
+
+## Follaje: los árboles secos reverdecen (`sketch.js`)
+
+- **Una sola fuente de siembra**: `objetivoDeVida()` lee
+  `plantaDebug.crecimiento()`, que publica `planta.js`. El mismo crecimiento que
+  estira el tallo con el puño cerrado es el que llena la copa de los árboles.
+  No se duplica la lectura de gestos: si se tocara la planta, el bosque la sigue.
+- **Las manos sostienen la vida** (`actualizarVida(dt)`, una vez por frame en
+  `draw()`): mientras haya al menos una mano en cuadro, la vida va hacia ese
+  crecimiento; cuando las manos se van, el objetivo baja a 0 y el bosque se
+  apaga solo. Los árboles vuelven a quedar secos —la planta, en cambio, conserva
+  su altura, que es su contrato de siempre—.
+- **Gracia y tiempos**: `FOLLAJE.graciaSinManos` (0.5 s) absorbe los parpadeos
+  del tracking, y encima ya existe la gracia de 250 ms de `fusionarManos`. La
+  vida entra con `ataqueVida` (4.5) y se retira con `relajoVida` (1.6): pierde la
+  mitad en ~0.9 s y a los 2 s ya no se nota. Ambas con amortiguación exponencial
+  `1 - exp(-k·dt)`, así no dependen del framerate.
+- Sin `planta.js` la vida es 0 y los árboles quedan secos, que es el estado
+  original de la escena. `Number.isFinite` protege contra un `NaN`: sin eso el
+  color del follaje se rompe en silencio.
+- **No se hornea**: el sprite del árbol es un solo dibujo y el follaje es un
+  estado. Se recogen hojas durante el mismo recorrido que dibuja las ramas
+  (`dibujarRama` recibe el array `hojas`), así que nacen exactamente sobre las
+  ramas y no hay una segunda geometría que se desincronice.
+- Cada nudo de rama deja un **ramillete** de `FOLLAJE.racimo` hojas (posición,
+  ángulo y escala). Con una hoja por rama se lee como puntos; con el ramillete,
+  como copa.
+- **La hoja se mide con el alto del árbol, no con su rama** (`FOLLAJE.tamanoHoja`
+  = 0.07). Los árboles lejanos son 4× más chicos: si el tamaño saliera de la rama
+  donde nació, el árbol lejano quedaba con hojas gigantes.
+- **Geometría resuelta al construir**: `prepararHojas()` descarta hojas
+  invisibles (`largoMinimo`), recorta al tope (`maximoPorArbol` 400) y precalcula
+  los seis vértices de cada hoja ya rotados. Dibujar es sumar: ninguna
+  trigonometría por frame.
+- **Orden de aparición** (`hoja.orden` 0..1): la distancia al centro de la copa
+  normalizada contra ESE árbol, más un reparto por número áureo. La copa se llena
+  desde adentro hacia afuera, con el primer nivel de la planta ya visible, y dos
+  hojas a la misma distancia no se abren en el mismo frame. `vida > orden`
+  habilita la hoja, y se abre en `ventanaAparicion` (0.14) de crecimiento.
+- **Un solo `fill` por árbol**: el follaje se dibuja con la API de canvas 2D
+  (`contextoDeDibujo()`), un `beginPath` con un subcamino cerrado por hoja y un
+  `fill` al final. Con un `fill()` de p5 por hoja serían ~2000 llamadas al canvas
+  por frame; así son 13. `contextoDeDibujo()` usa `drawingContext` si está y, si
+  no, llega al mismo contexto por `p5.instance.canvas`.
+- **Tono**: cada plano tiene su par de verdes en `PALETA`
+  (`hojaTierna*` → `hojaMadura*`). Se mezclan con la vida, así el brote entra
+  amarillento y madura a verde profundo. `mezclarTono()` escribe en un array
+  reutilizado: cero basura por frame.
+- **Dibujo**: va dentro del mismo `push`/`rotate` del árbol, después del
+  `image()`, para que las hojas se muevan con el viento y las ramas finas se lean
+  por detrás del follaje.
+- `window.escenarioDebug` expone `vida()`, `hojasPorArbol()` y `hojasTotales()`
+  para comprobarlo desde la consola.
+- Si se toca la recursión de `dibujarRama` hay que respetar la poda
+  (`nivel <= 0 || grosor < 0.6 || largo < 2`): los árboles finos se cortan antes
+  de llegar al último nivel, y por eso el follaje se cuelga de *todos* los nudos
+  y no de un nivel fijo.
 
 ## Personaje (`sketch.js` + `personaje.png`)
 

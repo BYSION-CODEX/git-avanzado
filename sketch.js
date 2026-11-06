@@ -5,8 +5,9 @@
    Estado actual:
    - Escenario animado: el paisaje se mueve con un viento continuo (árboles,
      pasto, polvo y rachas). La planta de planta.js crece encima.
-   - Los árboles secos reverdecen con el mismo crecimiento de esa planta: el
-     follaje aparece de a poco sobre las ramas terminales (ver FOLLAJE).
+   - Los árboles secos reverdecen con el mismo crecimiento de esa planta, pero
+     solo mientras haya manos en cuadro: sin manos el bosque se apaga y vuelve
+     a quedar seco (ver FOLLAJE y actualizarVida()).
    - Captura de video de la cámara montada en #camara-contenedor.
    - Body Pose y Hand Pose corriendo sobre ese video.
 
@@ -64,6 +65,7 @@ function draw() {
   relojEscena += dt;
 
   actualizarViento(dt);
+  actualizarVida(dt);
   actualizarPersonaje(dt);
   dibujarEscenario(relojEscena, dt);
 }
@@ -138,20 +140,41 @@ const PALETA = {
  * pueden desincronizar.
  */
 const FOLLAJE = {
-  maximoPorArbol: 110, // tope de hojas por árbol (un solo path por árbol)
-  largoMinimo: 2.4, // px: una hoja más chica que esto no se ve y solo cuesta
-  tamanoHoja: 0.45, // fracción del largo de la rama terminal
+  maximoPorArbol: 400, // tope de hojas por árbol (un solo path por árbol)
+  largoMinimo: 2.5, // px: una hoja más chica que esto no se ve y solo cuesta
+  tamanoHoja: 0.07, // fracción del alto del árbol: igual densidad en los 3 planos
   anchoHoja: 0.44, // relación ancho/largo de la hoja
   ventanaAparicion: 0.14, // fracción de crecimiento en la que una hoja se abre
+
   /**
-   * Ramillete de cada punta: tres hojas que salen del mismo nudo. Una sola
-   * hoja por rama se lee como un punto; tres, como una copa.
+   * La vida se sostiene con las manos en cuadro. Mientras haya una, el bosque
+   * sigue el crecimiento de la planta; cuando se van, se apaga solo y los
+   * árboles vuelven a quedar secos.
+   *
+   * `graciaSinManos` absorbe los parpadeos del tracking (y la gracia de 250 ms
+   * que ya trae `fusionarManos`): si la mano desaparece un instante, el bosque
+   * no se apaga. `relajoVida` es más lento que `ataqueVida` a propósito: volver
+   * se siente como que responde, irse como que se apaga.
+   */
+  ataqueVida: 4.5,
+  relajoVida: 1.6,
+  graciaSinManos: 0.5,
+  /**
+   * Ramillete de cada nudo: diez hojas que salen del mismo punto. Una sola
+   * hoja por rama se lee como un punto; diez, como un trozo de copa.
    * `avance` corre el brote sobre la dirección de la rama, `escala` lo achica.
    */
   racimo: [
     { avance: 0, giro: 0, escala: 1 },
-    { avance: 0.28, giro: 0.8, escala: 0.86 },
-    { avance: 0.28, giro: -0.8, escala: 0.86 },
+    { avance: 0.55, giro: 0, escala: 0.72 },
+    { avance: 0.3, giro: 0.75, escala: 0.9 },
+    { avance: 0.3, giro: -0.75, escala: 0.9 },
+    { avance: 0.12, giro: 1.4, escala: 0.78 },
+    { avance: 0.12, giro: -1.4, escala: 0.78 },
+    { avance: 0.42, giro: 1.9, escala: 0.8 },
+    { avance: 0.42, giro: -1.9, escala: 0.8 },
+    { avance: 0.6, giro: 1.1, escala: 0.68 },
+    { avance: 0.6, giro: -1.1, escala: 0.68 },
   ],
   // Un par de tonos por plano: 0 lejos, 1 medio, 2 cerca.
   tonos: [
@@ -308,6 +331,9 @@ let relojEscena = 0; // segundos desde el arranque
 let fuerzaViento = VIENTO.fuerzaMinima; // 0..1, ya suavizada
 let direccionViento = VIENTO.direccionMedia; // 1 = derecha
 const tonoMezclado = [0, 0, 0]; // buffer del follaje: evita basura por frame
+let contextoFollaje = null; // contexto 2D cacheado para dibujar el follaje
+let vidaPaisaje = 0; // 0..1, ya suavizada: cuánta vida tiene el bosque ahora
+let segundosSinManos = 0; // ausencia sostenida, para la gracia del tracking
 
 /* ---------- Escenario: construcción ---------- */
 
@@ -615,7 +641,7 @@ function crearSpriteDeArbol(alto, grosor, tono, niveles, inclinacion, semilla) {
   dibujarArbol(g, 0, 0, alto, grosor, tono, niveles, inclinacion, semilla, hojas);
   g.pop();
 
-  return { grafico: g, ancho, baseY, hojas: prepararHojas(hojas) };
+  return { grafico: g, ancho, baseY, hojas: prepararHojas(hojas, alto) };
 }
 
 /**
@@ -656,39 +682,121 @@ function dibujarFollaje(arbol, vida) {
   const hojas = arbol.hojas;
   if (vida <= 0 || !hojas || hojas.length === 0) return;
 
+  // Canvas 2D directo: cada hoja es un subcamino cerrado dentro de UN solo
+  // path. Con un fill por hoja serían cientos de llamadas al canvas por frame;
+  // así es un beginPath y un fill por árbol, y el costo no depende de la copa.
+  const lienzo = contextoDeDibujo();
+  if (!lienzo) return;
+
   const tono = mezclarTono(arbol.tonoTierno, arbol.tonoMaduro, vida);
-  noStroke();
-  fill(tono[0], tono[1], tono[2]);
+
+  // p5 cachea `fillStyle` en el renderer: si se lo pisa sin devolverlo, un
+  // `fill()` posterior con el mismo color que el cacheado se saltea la
+  // asignación y el dibujo sale con el color del follaje. Se guarda y se
+  // restaura, junto con el alfa global.
+  const estiloPrevio = lienzo.fillStyle;
+  const alfaPrevio = lienzo.globalAlpha;
+
+  lienzo.fillStyle = `rgb(${Math.round(tono[0])}, ${Math.round(tono[1])}, ${Math.round(tono[2])})`;
+  lienzo.globalAlpha = 1;
+  lienzo.beginPath();
 
   for (const hoja of hojas) {
-    const avance = (vida - hoja.orden) / FOLLAJE.ventanaAparicion;
+    // La ventana se acorta para las últimas hojas, así la más lejana igual
+    // llega a tamaño completo con vida 1 (y no queda a mitad de camino).
+    const ventana = Math.min(FOLLAJE.ventanaAparicion, 1 - hoja.orden);
+    const avance = (vida - hoja.orden) / ventana;
     if (avance <= 0) continue;
 
-    // Entra chica y se abre: el brote se lee como algo que crece, no como un
-    // objeto que se hace visible.
-    const escala = 0.3 + 0.7 * Math.min(1, avance);
+    // Aparece chica y se abre; al apagarse, se cierra. El piso de 0.25 es para
+    // que el primer brote se vea: a 10% de crecimiento una hoja a tamaño 0.05
+    // sería invisible.
+    const escala = 0.25 + 0.75 * Math.min(1, avance);
     const vertices = hoja.vertices;
 
-    beginShape();
-    for (let i = 0; i < vertices.length; i += 1) {
-      vertex(hoja.x + vertices[i].dx * escala, hoja.y + vertices[i].dy * escala);
+    lienzo.moveTo(hoja.x + vertices[0].dx * escala, hoja.y + vertices[0].dy * escala);
+    for (let i = 1; i < vertices.length; i += 1) {
+      lienzo.lineTo(hoja.x + vertices[i].dx * escala, hoja.y + vertices[i].dy * escala);
     }
-    endShape(CLOSE);
+    lienzo.closePath();
   }
+
+  lienzo.fill();
+  lienzo.fillStyle = estiloPrevio;
+  lienzo.globalAlpha = alfaPrevio;
 }
 
 /**
- * Vida del paisaje (0..1). La única fuente es la planta: planta.js publica el
- * crecimiento que consigue el puño cerrado. Así una sola variable manda sobre
- * el tallo y sobre el bosque. Sin planta.js no hay vida: los árboles se quedan
- * secos, que es el estado original de la escena.
+ * Contexto 2D del canvas de p5.
+ *
+ * El modo global de p5 expone casi todo, pero `drawingContext` no está en la
+ * lista de propiedades que copia en todas las versiones: si falta, se llega al
+ * mismo contexto por la instancia. Se cachea, y se renueva solo si p5 cambia
+ * de canvas (un resize no lo hace, pero no cuesta nada comprobarlo).
+ */
+function contextoDeDibujo() {
+  if (typeof drawingContext !== 'undefined' && drawingContext) return drawingContext;
+
+  const instancia = typeof p5 !== 'undefined' ? p5.instance : null;
+  const lienzo = instancia && instancia.canvas ? instancia.canvas : null;
+  if (!lienzo) return null;
+
+  if (!contextoFollaje || contextoFollaje.canvas !== lienzo) {
+    contextoFollaje = lienzo.getContext('2d');
+  }
+
+  return contextoFollaje;
+}
+
+/**
+ * Vida del paisaje (0..1). La siembra el crecimiento que publica `planta.js`
+ * (el puño cerrado) y la sostienen las manos en cuadro: sin manos, el bosque se
+ * apaga solo y los árboles vuelven a su estado seco. Se actualiza una vez por
+ * frame en `actualizarVida()`.
  */
 function vidaDelPaisaje() {
+  return vidaPaisaje;
+}
+
+/** Crecimiento de la planta, acotado y a prueba de `NaN`. */
+function objetivoDeVida() {
   if (typeof plantaDebug === 'undefined' || !plantaDebug) return 0;
   if (typeof plantaDebug.crecimiento !== 'function') return 0;
 
   const valor = plantaDebug.crecimiento();
   return Number.isFinite(valor) ? constrain(valor, 0, 1) : 0;
+}
+
+/** ¿Hay al menos una mano detectada en cuadro? */
+function hayManosEnCuadro() {
+  if (typeof obtenerManos !== 'function') return false;
+
+  const manos = obtenerManos();
+  return Array.isArray(manos) && manos.length > 0;
+}
+
+/**
+ * Un paso de la vida del paisaje.
+ *
+ * Con manos, el objetivo es el crecimiento de la planta. Sin manos, el objetivo
+ * es 0: la vida se retira y las hojas se caen. Los primeros `graciaSinManos`
+ * segundos de ausencia no mueven nada, así un parpadeo del tracking no apaga el
+ * bosque a mitad de la presentación.
+ */
+function actualizarVida(dt) {
+  const hayManos = hayManosEnCuadro();
+  segundosSinManos = hayManos ? 0 : segundosSinManos + dt;
+
+  const sostenida = hayManos || segundosSinManos < FOLLAJE.graciaSinManos;
+  const objetivo = sostenida ? objetivoDeVida() : 0;
+
+  // Amortiguación exponencial, no un lerp con alfa fijo: no depende del
+  // framerate, igual que el viento y el crecimiento de la planta.
+  const rapidez = objetivo > vidaPaisaje ? FOLLAJE.ataqueVida : FOLLAJE.relajoVida;
+  const factor = 1 - Math.exp(-rapidez * dt);
+
+  vidaPaisaje += (objetivo - vidaPaisaje) * factor;
+  if (Math.abs(objetivo - vidaPaisaje) < 0.002) vidaPaisaje = objetivo;
 }
 
 /** Mezcla lineal de dos tonos en un array reutilizado: cero basura por frame. */
@@ -710,8 +818,13 @@ function mezclarTono(desde, hasta, t) {
  * planta. El número áureo reparte el resto para que dos hojas a la misma
  * distancia no salgan en el mismo frame.
  */
-function prepararHojas(hojas) {
-  const utiles = hojas.filter((hoja) => hoja.largo >= FOLLAJE.largoMinimo);
+function prepararHojas(hojas, alto) {
+  // Todas las hojas del árbol comparten el tamaño base de la copa, no el de la
+  // rama donde nacieron: así el follaje de un árbol lejano tiene hojas finas y
+  // el de uno cercano hojas grandes, y la densidad se lee igual en los tres
+  // planos.
+  const base = alto * FOLLAJE.tamanoHoja;
+  const utiles = hojas.filter((hoja) => base * hoja.escala >= FOLLAJE.largoMinimo);
   if (utiles.length === 0) return [];
 
   const paso = Math.ceil(utiles.length / FOLLAJE.maximoPorArbol);
@@ -743,20 +856,21 @@ function prepararHojas(hojas) {
     const desdeElCentro = rango > 1 ? (hoja.distancia - minimo) / rango : 0;
     const reparto = ((i + 1) * 0.6180339887) % 1;
     hoja.orden = constrain(desdeElCentro * 0.8 + reparto * 0.2, 0, 0.999);
+    hoja.largo = base * hoja.escala;
+    hoja.vertices = geometriaDeHoja(hoja.largo, hoja.angulo, i);
   });
 
   return recortadas;
 }
 
 /**
- * Una hoja ya resuelta en coordenadas del árbol: posición, umbral de aparición
- * y los seis vértices del polígono, rotados y escalados una sola vez.
+ * Seis vértices de una hoja apuntada —base angosta, panza al medio, punta en el
+ * extremo— ya rotados. Se calcula una vez al construir el árbol: dibujar es
+ * solo sumar.
  */
-function crearHoja(x, y, largoRama, angulo, giro, indice) {
-  const largo = Math.max(largoRama * FOLLAJE.tamanoHoja, 1.5);
+function geometriaDeHoja(largo, angulo, indice) {
   const ancho = largo * FOLLAJE.anchoHoja;
 
-  // Hoja apuntada: base angosta, panza al medio y punta en el extremo.
   const forma = [
     [0, 0],
     [largo * 0.3, -ancho * 0.5],
@@ -767,17 +881,25 @@ function crearHoja(x, y, largoRama, angulo, giro, indice) {
   ];
 
   // Cada hoja se inclina un poco respecto de su rama: si todas siguieran el
-  // mismo ángulo, la copa se vería como un peine.
-  const inclinacion = angulo + giro + ((indice * 0.6180339887) % 1 - 0.5) * 1.1;
+  // mismo ángulo, la copa se vería como un peine. El número áureo reparte las
+  // inclinaciones sin sortear nada, así el árbol es siempre el mismo.
+  const inclinacion = angulo + 0.55 * (((indice + 1) * 0.6180339887) % 1 - 0.5) * 2;
   const cos = Math.cos(inclinacion);
   const sin = Math.sin(inclinacion);
 
-  const vertices = forma.map(([u, v]) => ({
+  return forma.map(([u, v]) => ({
     dx: u * cos - v * sin,
     dy: u * sin + v * cos,
   }));
+}
 
-  return { x, y, largo, orden: 0, vertices };
+/**
+ * Un brote pendiente: dónde nace y con qué ángulo. El tamaño y los vértices se
+ * resuelven en prepararHojas(), que es el único lugar que conoce el alto del
+ * árbol y el tope de hojas.
+ */
+function crearHoja(x, y, angulo, escala, indice) {
+  return { x, y, angulo, escala, indice, distancia: 0, orden: 0, vertices: null };
 }
 
 /** Acceso de solo lectura para comprobar el follaje desde la consola. */
@@ -827,9 +949,9 @@ function dibujarArbol(g, x, yBase, alto, grosor, tono, niveles, inclinacion, sem
  * Rama recursiva. Se abre en dos o tres direcciones con ángulos tomados de
  * noise() —no de random()— para que el árbol sea siempre el mismo.
  *
- * Si recibe `hojas`, cada rama terminal (la última que se dibuja) deja ahí su
- * follaje. Se recoge en el mismo recorrido que dibuja: no hay una segunda
- * geometría que pueda desincronizarse de las ramas.
+ * Si recibe `hojas`, cada nudo deja ahí su ramillete de follaje. Se recoge en
+ * el mismo recorrido que dibuja: no hay una segunda geometría que pueda
+ * desincronizarse de las ramas.
  */
 function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla, hojas) {
   if (nivel <= 0 || grosor < 0.6 || largo < 2) return;
@@ -841,17 +963,26 @@ function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla, hojas
   g.strokeWeight(grosor);
   g.line(x, y, x2, y2);
 
-  // Rama terminal: acá nace la copa. Una hoja en la punta y otra un poco más
-  // atrás, para que el racimo tenga volumen y no sea una hilera de puntos.
-  if (hojas && nivel === 1) {
-    hojas.push(crearHoja(x2, y2, largo, angulo, 0, hojas.length));
-    if (largo > 6) {
-      hojas.push(crearHoja(lerp(x, x2, 0.45), lerp(y, y2, 0.45), largo * 0.8, angulo + 0.7, 0, hojas.length));
-    }
-  }
-
   const apertura = 0.3 + noise(x * 0.015 + semilla, y * 0.015) * 0.35;
   const acortar = 0.64 + noise(y * 0.02, x * 0.02 + semilla) * 0.14;
+
+  // Follaje: cada nudo lleva su ramillete. La punta define el borde de la copa
+  // y las ramas de adentro le ponen cuerpo, que es lo que hace que el árbol
+  // deje de leerse como un esqueleto.
+  if (hojas) {
+    for (const brote of FOLLAJE.racimo) {
+      const direccion = angulo + brote.giro;
+      hojas.push(
+        crearHoja(
+          x2 + Math.cos(direccion) * largo * brote.avance,
+          y2 + Math.sin(direccion) * largo * brote.avance,
+          direccion,
+          brote.escala,
+          hojas.length
+        )
+      );
+    }
+  }
 
   dibujarRama(g, x2, y2, largo * acortar, angulo - apertura, grosor * 0.62, nivel - 1, tono, semilla, hojas);
   dibujarRama(g, x2, y2, largo * acortar * 0.92, angulo + apertura * 0.8, grosor * 0.58, nivel - 1, tono, semilla, hojas);
