@@ -5,6 +5,8 @@
    Estado actual:
    - Escenario animado: el paisaje se mueve con un viento continuo (árboles,
      pasto, polvo y rachas). La planta de planta.js crece encima.
+   - Los árboles secos reverdecen con el mismo crecimiento de esa planta: el
+     follaje aparece de a poco sobre las ramas terminales (ver FOLLAJE).
    - Captura de video de la cámara montada en #camara-contenedor.
    - Body Pose y Hand Pose corriendo sobre ese video.
 
@@ -12,6 +14,8 @@
    (cielo, suelo, piedras y ramas caídas) se hornea una sola vez en un
    p5.Graphics y se dibuja con image(). Solo se anima la capa con pocos
    trazos: árboles cacheados como sprites, pasto, polvo y rachas.
+   El follaje no se hornea: son polígonos ya resueltos que se dibujan solo si
+   el crecimiento de la planta ya habilitó esa hoja (máximo 34 por árbol).
    ============================================================ */
 
 /* ---------- Ciclo de vida de p5 ---------- */
@@ -108,6 +112,53 @@ const PALETA = {
   piedraCerca: [51, 51, 50],
 
   pastoSeco: [99, 96, 87],
+
+  // Follaje: dos extremos que se mezclan según la vida del paisaje. `tierno` es
+  // el verde amarillo del brote que acaba de salir; `maduro`, el verde apagado
+  // de una copa ya hecha. El tercer tono de cada familia es el plano.
+  hojaTiernaLejos: [148, 152, 116],
+  hojaTiernaMedio: [128, 140, 94],
+  hojaTiernaCerca: [100, 116, 72],
+
+  hojaMaduraLejos: [110, 124, 96],
+  hojaMaduraMedio: [86, 106, 68],
+  hojaMaduraCerca: [56, 80, 44],
+};
+
+/**
+ * Follaje de los árboles: la vida que devuelve el paisaje.
+ *
+ * No se hornea en el sprite del árbol porque tiene que aparecer de a poco: el
+ * sprite es un solo dibujo y el follaje es un estado. Las hojas viven como
+ * polígonos ya resueltos en coordenadas del árbol (sin trigonometría por frame)
+ * y se dibujan solo las que el crecimiento de la planta ya habilitó.
+ *
+ * La fuente de la vida es planta.js: el mismo `crecimiento` que mueve el tallo
+ * con el puño cerrado. Una sola variable manda, así el bosque y la planta no se
+ * pueden desincronizar.
+ */
+const FOLLAJE = {
+  maximoPorArbol: 110, // tope de hojas por árbol (un solo path por árbol)
+  largoMinimo: 2.4, // px: una hoja más chica que esto no se ve y solo cuesta
+  tamanoHoja: 0.45, // fracción del largo de la rama terminal
+  anchoHoja: 0.44, // relación ancho/largo de la hoja
+  ventanaAparicion: 0.14, // fracción de crecimiento en la que una hoja se abre
+  /**
+   * Ramillete de cada punta: tres hojas que salen del mismo nudo. Una sola
+   * hoja por rama se lee como un punto; tres, como una copa.
+   * `avance` corre el brote sobre la dirección de la rama, `escala` lo achica.
+   */
+  racimo: [
+    { avance: 0, giro: 0, escala: 1 },
+    { avance: 0.28, giro: 0.8, escala: 0.86 },
+    { avance: 0.28, giro: -0.8, escala: 0.86 },
+  ],
+  // Un par de tonos por plano: 0 lejos, 1 medio, 2 cerca.
+  tonos: [
+    { tierno: PALETA.hojaTiernaLejos, maduro: PALETA.hojaMaduraLejos },
+    { tierno: PALETA.hojaTiernaMedio, maduro: PALETA.hojaMaduraMedio },
+    { tierno: PALETA.hojaTiernaCerca, maduro: PALETA.hojaMaduraCerca },
+  ],
 };
 
 /* ---------- Viento: configuración ---------- */
@@ -256,6 +307,7 @@ let escenaDesactualizada = true; // true = reconstruir (setup o resize)
 let relojEscena = 0; // segundos desde el arranque
 let fuerzaViento = VIENTO.fuerzaMinima; // 0..1, ya suavizada
 let direccionViento = VIENTO.direccionMedia; // 1 = derecha
+const tonoMezclado = [0, 0, 0]; // buffer del follaje: evita basura por frame
 
 /* ---------- Escenario: construcción ---------- */
 
@@ -484,6 +536,7 @@ function crearArbolesViento() {
     semillaArbol += 37.7;
 
     const sprite = crearSpriteDeArbol(alto, grosor, tono, niveles, inclinacion, semillaArbol);
+    const tonos = FOLLAJE.tonos[plano];
     lista.push({
       grafico: sprite.grafico,
       x,
@@ -494,6 +547,9 @@ function crearArbolesViento() {
       balanceo,
       plano, // 0 lejos, 1 medio, 2 cerca: define el orden y dónde camina el personaje
       fase: random(TWO_PI), // desfase del vaivén: no se mueven en bloque
+      hojas: sprite.hojas, // follaje en coordenadas del árbol, ya ordenado
+      tonoTierno: tonos.tierno,
+      tonoMaduro: tonos.maduro,
     });
   };
 
@@ -550,12 +606,16 @@ function crearSpriteDeArbol(alto, grosor, tono, niveles, inclinacion, semilla) {
   const g = createGraphics(ancho, altoBuffer);
   g.pixelDensity(1);
 
+  // El follaje se recoge en el mismo recorrido que dibuja las ramas: nace en
+  // las puntas, así queda exactamente donde el árbol deja de crecer.
+  const hojas = [];
+
   g.push();
   g.translate(ancho * 0.5, baseY);
-  dibujarArbol(g, 0, 0, alto, grosor, tono, niveles, inclinacion, semilla);
+  dibujarArbol(g, 0, 0, alto, grosor, tono, niveles, inclinacion, semilla, hojas);
   g.pop();
 
-  return { grafico: g, ancho, baseY };
+  return { grafico: g, ancho, baseY, hojas: prepararHojas(hojas) };
 }
 
 /**
@@ -564,6 +624,8 @@ function crearSpriteDeArbol(alto, grosor, tono, niveles, inclinacion, semilla) {
  * y no en la raíz, que es exactamente lo que hace un árbol con viento.
  */
 function dibujarArbolesViento(t, plano) {
+  const vida = vidaDelPaisaje();
+
   for (const arbol of arbolesViento) {
     if (arbol.plano !== plano) continue;
 
@@ -575,9 +637,155 @@ function dibujarArbolesViento(t, plano) {
     translate(arbol.x, arbol.y);
     rotate(angulo);
     image(arbol.grafico, -arbol.ancho * 0.5, -arbol.baseY);
+    // Las hojas van después del sprite: nacen sobre las puntas y las ramas
+    // finas se leen por detrás del follaje, como en un árbol real.
+    dibujarFollaje(arbol, vida);
     pop();
   }
 }
+
+/**
+ * Dibuja las hojas que el crecimiento ya habilitó. Cada hoja tiene su propio
+ * umbral (`orden`) y se abre en una ventana corta, así el bosque se llena de a
+ * poco en vez de encenderse de golpe.
+ *
+ * Un solo `fill` por árbol y un polígono por hoja: seis vértices ya resueltos,
+ * sin rotaciones ni trigonometría por frame.
+ */
+function dibujarFollaje(arbol, vida) {
+  const hojas = arbol.hojas;
+  if (vida <= 0 || !hojas || hojas.length === 0) return;
+
+  const tono = mezclarTono(arbol.tonoTierno, arbol.tonoMaduro, vida);
+  noStroke();
+  fill(tono[0], tono[1], tono[2]);
+
+  for (const hoja of hojas) {
+    const avance = (vida - hoja.orden) / FOLLAJE.ventanaAparicion;
+    if (avance <= 0) continue;
+
+    // Entra chica y se abre: el brote se lee como algo que crece, no como un
+    // objeto que se hace visible.
+    const escala = 0.3 + 0.7 * Math.min(1, avance);
+    const vertices = hoja.vertices;
+
+    beginShape();
+    for (let i = 0; i < vertices.length; i += 1) {
+      vertex(hoja.x + vertices[i].dx * escala, hoja.y + vertices[i].dy * escala);
+    }
+    endShape(CLOSE);
+  }
+}
+
+/**
+ * Vida del paisaje (0..1). La única fuente es la planta: planta.js publica el
+ * crecimiento que consigue el puño cerrado. Así una sola variable manda sobre
+ * el tallo y sobre el bosque. Sin planta.js no hay vida: los árboles se quedan
+ * secos, que es el estado original de la escena.
+ */
+function vidaDelPaisaje() {
+  if (typeof plantaDebug === 'undefined' || !plantaDebug) return 0;
+  if (typeof plantaDebug.crecimiento !== 'function') return 0;
+
+  const valor = plantaDebug.crecimiento();
+  return Number.isFinite(valor) ? constrain(valor, 0, 1) : 0;
+}
+
+/** Mezcla lineal de dos tonos en un array reutilizado: cero basura por frame. */
+function mezclarTono(desde, hasta, t) {
+  tonoMezclado[0] = desde[0] + (hasta[0] - desde[0]) * t;
+  tonoMezclado[1] = desde[1] + (hasta[1] - desde[1]) * t;
+  tonoMezclado[2] = desde[2] + (hasta[2] - desde[2]) * t;
+  return tonoMezclado;
+}
+
+/**
+ * Deja el follaje listo para dibujarse: descarta lo que no se vería, lo acota
+ * al tope y le asigna a cada hoja su umbral de aparición.
+ *
+ * El orden no es al azar: se llena primero el corazón de la copa y después los
+ * bordes, que es como rebrota un árbol. Se normaliza contra la hoja más
+ * cercana y la más lejana de ESE árbol, así el primero y el último brote caen
+ * siempre en los extremos y el follaje arranca con el primer nivel de la
+ * planta. El número áureo reparte el resto para que dos hojas a la misma
+ * distancia no salgan en el mismo frame.
+ */
+function prepararHojas(hojas) {
+  const utiles = hojas.filter((hoja) => hoja.largo >= FOLLAJE.largoMinimo);
+  if (utiles.length === 0) return [];
+
+  const paso = Math.ceil(utiles.length / FOLLAJE.maximoPorArbol);
+  const recortadas = paso > 1 ? utiles.filter((_, i) => i % paso === 0) : utiles;
+
+  let sumaX = 0;
+  let sumaY = 0;
+  for (const hoja of recortadas) {
+    sumaX += hoja.x;
+    sumaY += hoja.y;
+  }
+  const centroX = sumaX / recortadas.length;
+  const centroY = sumaY / recortadas.length;
+
+  let minimo = Infinity;
+  let maximo = 0;
+  for (const hoja of recortadas) {
+    const distancia = Math.hypot(hoja.x - centroX, hoja.y - centroY);
+    hoja.distancia = distancia;
+    minimo = Math.min(minimo, distancia);
+    maximo = Math.max(maximo, distancia);
+  }
+
+  // Un árbol con todas las hojas a la misma distancia (imposible en la
+  // práctica, pero evita dividir por cero) se llena de golpe.
+  const rango = maximo - minimo;
+
+  recortadas.forEach((hoja, i) => {
+    const desdeElCentro = rango > 1 ? (hoja.distancia - minimo) / rango : 0;
+    const reparto = ((i + 1) * 0.6180339887) % 1;
+    hoja.orden = constrain(desdeElCentro * 0.8 + reparto * 0.2, 0, 0.999);
+  });
+
+  return recortadas;
+}
+
+/**
+ * Una hoja ya resuelta en coordenadas del árbol: posición, umbral de aparición
+ * y los seis vértices del polígono, rotados y escalados una sola vez.
+ */
+function crearHoja(x, y, largoRama, angulo, giro, indice) {
+  const largo = Math.max(largoRama * FOLLAJE.tamanoHoja, 1.5);
+  const ancho = largo * FOLLAJE.anchoHoja;
+
+  // Hoja apuntada: base angosta, panza al medio y punta en el extremo.
+  const forma = [
+    [0, 0],
+    [largo * 0.3, -ancho * 0.5],
+    [largo * 0.72, -ancho * 0.34],
+    [largo, 0],
+    [largo * 0.72, ancho * 0.34],
+    [largo * 0.3, ancho * 0.5],
+  ];
+
+  // Cada hoja se inclina un poco respecto de su rama: si todas siguieran el
+  // mismo ángulo, la copa se vería como un peine.
+  const inclinacion = angulo + giro + ((indice * 0.6180339887) % 1 - 0.5) * 1.1;
+  const cos = Math.cos(inclinacion);
+  const sin = Math.sin(inclinacion);
+
+  const vertices = forma.map(([u, v]) => ({
+    dx: u * cos - v * sin,
+    dy: u * sin + v * cos,
+  }));
+
+  return { x, y, largo, orden: 0, vertices };
+}
+
+/** Acceso de solo lectura para comprobar el follaje desde la consola. */
+window.escenarioDebug = {
+  vida: () => vidaDelPaisaje(),
+  hojasPorArbol: () => arbolesViento.map((arbol) => arbol.hojas.length),
+  hojasTotales: () => arbolesViento.reduce((total, arbol) => total + arbol.hojas.length, 0),
+};
 
 /**
  * Un árbol sin hojas: base ensanchada, tronco levemente curvado y ramas
@@ -587,7 +795,7 @@ function dibujarArbolesViento(t, plano) {
  * `g` es el destino del dibujo (un p5.Graphics o el canvas principal) y
  * `semilla` desplaza el campo de noise para que dos árboles no sean gemelos.
  */
-function dibujarArbol(g, x, yBase, alto, grosor, tono, niveles, inclinacion, semilla) {
+function dibujarArbol(g, x, yBase, alto, grosor, tono, niveles, inclinacion, semilla, hojas) {
   const angulo = -HALF_PI + inclinacion;
   const altoTronco = alto * 0.45;
   const xCopa = x + Math.cos(angulo) * altoTronco;
@@ -610,16 +818,20 @@ function dibujarArbol(g, x, yBase, alto, grosor, tono, niveles, inclinacion, sem
   g.line(xMedio, yMedio, xCopa, yCopa);
 
   // Ramas principales desde la copa.
-  dibujarRama(g, xCopa, yCopa, altoTronco * 0.85, angulo - 0.3, grosor * 0.68, niveles, tono, semilla);
-  dibujarRama(g, xCopa, yCopa, altoTronco * 0.78, angulo + 0.26, grosor * 0.62, niveles, tono, semilla);
-  dibujarRama(g, xMedio, yMedio, altoTronco * 0.55, angulo - 0.75, grosor * 0.45, niveles - 1, tono, semilla);
+  dibujarRama(g, xCopa, yCopa, altoTronco * 0.85, angulo - 0.3, grosor * 0.68, niveles, tono, semilla, hojas);
+  dibujarRama(g, xCopa, yCopa, altoTronco * 0.78, angulo + 0.26, grosor * 0.62, niveles, tono, semilla, hojas);
+  dibujarRama(g, xMedio, yMedio, altoTronco * 0.55, angulo - 0.75, grosor * 0.45, niveles - 1, tono, semilla, hojas);
 }
 
 /**
  * Rama recursiva. Se abre en dos o tres direcciones con ángulos tomados de
  * noise() —no de random()— para que el árbol sea siempre el mismo.
+ *
+ * Si recibe `hojas`, cada rama terminal (la última que se dibuja) deja ahí su
+ * follaje. Se recoge en el mismo recorrido que dibuja: no hay una segunda
+ * geometría que pueda desincronizarse de las ramas.
  */
-function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla) {
+function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla, hojas) {
   if (nivel <= 0 || grosor < 0.6 || largo < 2) return;
 
   const x2 = x + Math.cos(angulo) * largo;
@@ -629,15 +841,24 @@ function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla) {
   g.strokeWeight(grosor);
   g.line(x, y, x2, y2);
 
+  // Rama terminal: acá nace la copa. Una hoja en la punta y otra un poco más
+  // atrás, para que el racimo tenga volumen y no sea una hilera de puntos.
+  if (hojas && nivel === 1) {
+    hojas.push(crearHoja(x2, y2, largo, angulo, 0, hojas.length));
+    if (largo > 6) {
+      hojas.push(crearHoja(lerp(x, x2, 0.45), lerp(y, y2, 0.45), largo * 0.8, angulo + 0.7, 0, hojas.length));
+    }
+  }
+
   const apertura = 0.3 + noise(x * 0.015 + semilla, y * 0.015) * 0.35;
   const acortar = 0.64 + noise(y * 0.02, x * 0.02 + semilla) * 0.14;
 
-  dibujarRama(g, x2, y2, largo * acortar, angulo - apertura, grosor * 0.62, nivel - 1, tono, semilla);
-  dibujarRama(g, x2, y2, largo * acortar * 0.92, angulo + apertura * 0.8, grosor * 0.58, nivel - 1, tono, semilla);
+  dibujarRama(g, x2, y2, largo * acortar, angulo - apertura, grosor * 0.62, nivel - 1, tono, semilla, hojas);
+  dibujarRama(g, x2, y2, largo * acortar * 0.92, angulo + apertura * 0.8, grosor * 0.58, nivel - 1, tono, semilla, hojas);
 
   // Tercera rama ocasional: rompe la simetría del árbol.
   if (nivel > 2 && noise(x * 0.03 + semilla, y * 0.03) > 0.42) {
-    dibujarRama(g, x2, y2, largo * acortar * 0.7, angulo + apertura * 0.1, grosor * 0.42, nivel - 1, tono, semilla);
+    dibujarRama(g, x2, y2, largo * acortar * 0.7, angulo + apertura * 0.1, grosor * 0.42, nivel - 1, tono, semilla, hojas);
   }
 }
 
