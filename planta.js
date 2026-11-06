@@ -1,10 +1,10 @@
 /* ============================================================
    PLANTA — crecimiento por gesto de puño cerrado
 
-   Capa independiente sobre el lienzo de p5. El paisaje sigue con
-   noLoop(): redibujar sus ~1600 trazos en cada frame para animar el
-   crecimiento sería inviable. Acá solo se redibuja la planta, a 60 fps,
-   sobre un canvas transparente del mismo tamaño que el de p5.
+   Capa independiente sobre el lienzo de p5. El paisaje ya tiene su propio
+   bucle de viento, pero la planta NO se dibuja ahí: este canvas transparente
+   del mismo tamaño que el de p5 se limpia y se repinta a 60 fps, y así el
+   crecimiento no obliga a repintar el fondo ni el pasto.
 
    Entradas: obtenerManos() de sketch.js (manos normalizadas 0..1, ya
    suavizadas, con su gesto). Salidas: la planta y el porcentaje en el

@@ -3,14 +3,15 @@
    Modo global: p5.js llama a setup() y draw() por su cuenta.
 
    Estado actual:
-   - Escenario estático: paisaje gris deteriorado, sin flores ni crecimiento.
+   - Escenario animado: el paisaje se mueve con un viento continuo (árboles,
+     pasto, polvo y rachas). La planta de planta.js crece encima.
    - Captura de video de la cámara montada en #camara-contenedor.
-   - SIN reconocimiento corporal y SIN ml5.js todavía.
+   - Body Pose y Hand Pose corriendo sobre ese video.
 
-   Nota de rendimiento: la escena se redibuja completa una sola vez porque
-   hay noLoop(). Cuando llegue la animación, el paisaje debe renderizarse a un
-   p5.Graphics una vez y dibujarse con image(); hacerlo por frame con esta
-   cantidad de trazos cuesta caro.
+   Nota de rendimiento: la escena NO se redibuja completa por frame. El fondo
+   (cielo, suelo, piedras y ramas caídas) se hornea una sola vez en un
+   p5.Graphics y se dibuja con image(). Solo se anima la capa con pocos
+   trazos: árboles cacheados como sprites, pasto, polvo y rachas.
    ============================================================ */
 
 /* ---------- Ciclo de vida de p5 ---------- */
@@ -35,29 +36,46 @@ function setup() {
   // Sin esto, un monitor de alta densidad cuadruplica el costo de dibujo.
   pixelDensity(1);
 
-  // Escenario estático: se dibuja una vez y se repinta al redimensionar.
-  // Quitar noLoop() cuando empiece la animación del jardín.
-  noLoop();
+  // Escenario vivo: draw() corre a 60 fps y el viento avanza cada frame.
+  // El fondo se hornea una sola vez acá y solo se reconstruye al redimensionar.
+  construirEscenario();
+
+  // La imagen del personaje llega después (loadImage es async en p5 2.x).
+  cargarPersonaje();
 
   // La cámara se pide al final: si falla, el escenario ya está funcionando.
   iniciarCamara();
 }
 
-/** Dibuja el escenario completo. Estático: no hay estado que actualizar. */
+/** Un frame de la escena: actualiza el viento y dibuja el paisaje vivo. */
 function draw() {
-  dibujarEscenario();
+  // Un resize durante el arrastre dispara muchos eventos: se reconstruye una
+  // sola vez, en el frame siguiente, y no una vez por evento.
+  if (escenaDesactualizada) construirEscenario();
+  if (!fondoEstatico) return;
+
+  // Acotado: al volver de una pestaña en segundo plano deltaTime puede valer
+  // segundos y el viento daría un salto.
+  const dt = Math.min(deltaTime / 1000, 0.05);
+  relojEscena += dt;
+
+  actualizarViento(dt);
+  actualizarPersonaje(dt);
+  dibujarEscenario(relojEscena, dt);
 }
 
 /**
  * Mantiene el canvas del tamaño de su contenedor cuando cambia la ventana.
- * Con noLoop() activo hace falta redraw() para repintar el nuevo tamaño.
+ * El fondo y los sprites están dimensionados en píxeles, así que hay que
+ * volver a construirlos: se marca la escena como desactualizada y draw() se
+ * encarga una sola vez.
  */
 function windowResized() {
   const contenedor = document.getElementById('lienzo-contenedor');
   if (!contenedor || typeof width === 'undefined') return;
 
   resizeCanvas(contenedor.clientWidth, contenedor.clientHeight);
-  redraw();
+  escenaDesactualizada = true;
 }
 
 /* ============================================================
@@ -67,7 +85,7 @@ function windowResized() {
    está, así el ojo construye distancia sin necesidad de perspectiva.
    ============================================================ */
 
-/** Semilla fija: la composición es idéntica en cada repintado. */
+/** Semilla fija: la composición es idéntica en cada reconstrucción. */
 const SEMILLA = 20261105;
 
 /** Paleta desaturada: frío arriba, tierra muerta abajo. */
@@ -92,21 +110,257 @@ const PALETA = {
   pastoSeco: [99, 96, 87],
 };
 
-/** Punto de entrada del escenario. Orden = profundidad, de atrás hacia adelante. */
-function dibujarEscenario() {
-  // Semillas: random() y noise() devuelven siempre lo mismo. Sin esto, cada
-  // redibujado (o cada resize) generaría un paisaje distinto.
+/* ---------- Viento: configuración ---------- */
+
+/**
+ * El viento nunca se detiene ni llega a huracán. La fuerza sale de dos octavas
+ * de noise —una lenta, la ráfaga; otra rápida, el pulso—, así no se lee como
+ * una senoide repetida. Con las semillas de noise fijas, el patrón es el mismo
+ * en cada sesión: la escena se puede ensayar.
+ */
+const VIENTO = {
+  fuerzaMinima: 0.2, // aun en calma el aire se mueve un poco
+  velocidadRafaga: 0.22,
+  ataque: 3.4, // la ráfaga entra rápido
+  relajo: 0.85, // y se desarma lento
+  direccionMedia: 1, // sopla hacia la derecha
+  direccionAmplitud: 0.32, // pero no siempre con la misma fuerza
+  semillaRafaga: 4.2,
+  semillaPulso: 9.7,
+  semillaDireccion: 17.3,
+  velocidadDireccion: 0.07,
+  // Frecuencia del vaivén de cada árbol. Más alto = ramas que se sacuden
+  // antes; pasado ~2.5 se ve como vibración, no como viento.
+  velocidadVaiven: 1.75,
+};
+
+/**
+ * Matujos de pasto seco. Cada brizna guarda su inclinación, su largo y su
+ * rigidez: sin esa variedad las 26 matas se doblarían al unísono y el viento
+ * se vería de plástico.
+ */
+const MATUJOS = {
+  cantidad: 26,
+  alturaMinima: 0.026,
+  alturaMaxima: 0.078,
+  doblezMaximo: 0.85, // radianes de doblez a viento máximo (~49°)
+  anguloMaximo: 1.35, // ~77°: pasado 90° la punta se clava en la tierra
+  temblorMaximo: 0.3,
+  velocidadTemblor: 5.5,
+  segmentos: 5,
+};
+
+/** Polvo en suspensión: partículas que el viento arrastra y recicla. */
+const POLVO_AIRE = {
+  cantidad: 150,
+  tamanoMinimo: 0.9,
+  tamanoMaximo: 2.2,
+  alfaMinimo: 6,
+  alfaMaximo: 20,
+  empujeMinimo: 12, // px/s con el aire en calma
+  empujeMaximo: 120, // px/s a viento máximo
+};
+
+/** Rachas: líneas tenues que cruzan el cielo y delatan la corriente de aire. */
+const RACHAS = {
+  cantidad: 7,
+  largoMinimo: 0.05,
+  largoMaximo: 0.17,
+  alfa: 20,
+  velocidadMinima: 18,
+  velocidadMaxima: 60,
+};
+
+/**
+ * Fábricas lejanas: dos siluetas sobre la capa más lejana y su humo.
+ * Las chimeneas son parte del fondo congelado (no se mueven); el humo es capa
+ * viva y lo arrastra el mismo viento que todo lo demás. Todas las medidas son
+ * fracciones del alto del lienzo para que la escala no dependa del tamaño.
+ */
+const FABRICA = {
+  fuentes: [
+    { fx: 0.605, cuerpo: 0.024, ancho: 0.032, chimenea: 0.052 },
+    { fx: 0.648, cuerpo: 0.017, ancho: 0.022, chimenea: 0.033 },
+  ],
+  color: [124, 128, 132], // apenas más claro que el suelo: se hunde en la bruma
+  humoColor: [184, 188, 192],
+  humoAlfa: 18, // leve a propósito: se tiene que adivinar, no tapar el paisaje
+  humoPuffs: 11,
+  humoVidaMinima: 6,
+  humoVidaMaxima: 9,
+  humoSubida: 0.17, // cuánto sube el penacho, en fracciones del alto
+  humoDeriva: 0.12, // cuánto se abre a favor del viento
+  humoDiametroInicial: 0.012,
+  humoDiametroFinal: 0.055,
+};
+
+/**
+ * Personaje que camina por el plano medio, en bucle, y se detiene a mirar un
+ * árbol seco antes de ponerse triste. Es un sprite único: no hay cuadros de
+ * animación, así que el caminar y la tristeza se resuelven con transformaciones
+ * (vaivén, inclinación y hundimiento) sobre la misma imagen.
+ */
+const PERSONAJE = {
+  // Tiene que estar en la raíz del proyecto, junto a index.html, servido por el
+  // mismo origen. Sin este archivo el sketch funciona igual, sin personaje.
+  rutaImagen: 'personaje.png',
+  altura: 0.14, // fracción del alto del lienzo
+  velocidad: 0.05, // fracción del alto por segundo (lento: está lejos)
+  pasos: 1.45, // pasos por segundo
+  balanceoPaso: 0.022, // radianes de vaivén mientras camina
+  inclinacionMirar: -0.07, // se echa atrás para mirar hacia arriba
+  inclinacionTriste: 0.1, // cabecea hacia adelante
+  hundimiento: 0.92, // scaleY cuando está triste: se hunde en sí mismo
+  suavizado: 5.5, // velocidad del pasaje entre poses (exponencial)
+  duracionMirar: 1.3, // segundos mirando las ramas
+  duracionTriste: 2.9, // segundos de tristeza
+  cadaLagrima: 0.9, // segundos entre lágrima y lágrima mientras está triste
+  // Fondo claro a recortar: sin esto la imagen blanca taparía el paisaje.
+  toleranciaFondo: 28, // 0 desactiva el recorte
+  // Dónde está el ojo en la imagen (0..1 desde arriba a la izquierda). Solo se
+  // usa para que la lágrima nazca en el lugar correcto: si se recorta la
+  // imagen, este número cambia.
+  ojo: { x: 0.62, y: 0.2 },
+};
+
+/* ---------- Escenario: estado ---------- */
+
+let fondoEstatico = null; // p5.Graphics con cielo, suelo, piedras y ramas
+let horizonteEscena = 0;
+let arbolesViento = []; // [{ grafico, x, y, ancho, baseY, balanceo, fase }]
+let matujosViento = []; // [{ x, y, alto, briznas }]
+let polvoAire = []; // partículas en suspensión
+let rachasViento = []; // líneas de aire
+let fabricasViento = []; // geometría de las chimeneas lejanas
+let humoViento = []; // [{ fuente, puffs }] una columna por chimenea
+
+/** Estado del personaje. La imagen llega async; el resto existe desde setup. */
+const personaje = {
+  imagen: null,
+  cargando: false,
+  x: 0,
+  ancho: 0,
+  alto: 0,
+  arbol: null, // árbol seco al que mira
+  xParada: 0,
+  estado: 'caminando', // 'caminando' | 'mirando' | 'triste'
+  relojEstado: 0,
+  relojLagrima: 0,
+  miradaHecha: false, // ya frenó en el árbol en esta pasada
+  fasePaso: 0,
+  inclinacion: 0, // pose, sin el vaivén del paso
+  hundimiento: 1,
+  lagrimas: [],
+};
+let escenaDesactualizada = true; // true = reconstruir (setup o resize)
+let relojEscena = 0; // segundos desde el arranque
+let fuerzaViento = VIENTO.fuerzaMinima; // 0..1, ya suavizada
+let direccionViento = VIENTO.direccionMedia; // 1 = derecha
+
+/* ---------- Escenario: construcción ---------- */
+
+/**
+ * Hornea el fondo y prepara la capa viva. Se llama en setup() y cada vez que
+ * el canvas cambia de tamaño: buffers y sprites están dimensionados en píxeles,
+ * así que un resize los invalida.
+ */
+function construirEscenario() {
+  if (typeof width !== 'number' || width <= 0 || height <= 0) return;
+
+  escenaDesactualizada = false;
+  horizonteEscena = height * 0.54;
+
+  // Semillas: random() y noise() son deterministas, así que cada
+  // reconstrucción devuelve exactamente la misma composición.
   randomSeed(SEMILLA);
   noiseSeed(SEMILLA);
 
-  const horizonte = height * 0.54;
+  liberarEscenario();
 
-  background(PALETA.cieloBajo[0], PALETA.cieloBajo[1], PALETA.cieloBajo[2]);
+  // Las fábricas van primero: el fondo las dibuja y el humo necesita saber
+  // dónde está la boca de cada chimenea.
+  fabricasViento = crearFabricas();
 
-  dibujarAtmosfera(horizonte);
-  dibujarSuelo(horizonte);
-  dibujarArboles(horizonte);
-  dibujarElementos(horizonte);
+  fondoEstatico = crearFondoEstatico();
+  arbolesViento = crearArbolesViento();
+  matujosViento = crearMatujos();
+  polvoAire = crearPolvo();
+  rachasViento = crearRachas();
+  humoViento = crearHumo();
+
+  // Al final: necesita los árboles ya creados para elegir a cuál mirar.
+  reiniciarPersonaje();
+}
+
+/** Suelta los buffers anteriores: sin esto cada resize deja canvas vivos. */
+function liberarEscenario() {
+  if (fondoEstatico) {
+    fondoEstatico.remove();
+    fondoEstatico = null;
+  }
+
+  for (const arbol of arbolesViento) arbol.grafico.remove();
+  arbolesViento = [];
+}
+
+/** Cielo, suelo, piedras y ramas caídas: lo que no se mueve nunca. */
+function crearFondoEstatico() {
+  const g = createGraphics(width, height);
+  g.pixelDensity(1);
+
+  g.background(PALETA.cieloBajo[0], PALETA.cieloBajo[1], PALETA.cieloBajo[2]);
+
+  dibujarAtmosfera(g, horizonteEscena);
+  dibujarSuelo(g, horizonteEscena);
+  dibujarFabricas(g);
+  dibujarElementos(g, horizonteEscena);
+
+  return g;
+}
+
+/* ---------- Escenario: dibujo por frame ---------- */
+
+/** Punto de entrada de la capa viva. Orden = de atrás hacia adelante. */
+function dibujarEscenario(t, dt) {
+  if (!fondoEstatico) return;
+
+  image(fondoEstatico, 0, 0);
+  // El humo y las rachas van detrás de los árboles: son aire de cielo, no polvo
+  // encima de una copa.
+  dibujarHumo(t, dt);
+  dibujarRachas(t, dt);
+  // Los árboles se dibujan por planos para poder intercalar al personaje en el
+  // medio: camina detrás de los árboles cercanos y delante de los lejanos.
+  dibujarArbolesViento(t, 0);
+  dibujarArbolesViento(t, 1);
+  dibujarPersonaje();
+  dibujarArbolesViento(t, 2);
+  actualizarDibujarPolvo(t, dt);
+  dibujarMatujosViento(t);
+}
+
+/**
+ * Avanza el viento. Es la única fuente de movimiento de la escena: árboles,
+ * pasto, polvo y rachas leen `fuerzaViento` y `direccionViento`, así que todo
+ * se mueve coordinado sin que haya que sincronizar nada a mano.
+ */
+function actualizarViento(dt) {
+  const rafaga = noise(relojEscena * VIENTO.velocidadRafaga, VIENTO.semillaRafaga);
+  const pulso = noise(relojEscena * VIENTO.velocidadRafaga * 3.1, VIENTO.semillaPulso);
+
+  const objetivo = constrain(
+    VIENTO.fuerzaMinima + (rafaga * 0.85 + pulso * 0.15) * (1 - VIENTO.fuerzaMinima),
+    0,
+    1
+  );
+
+  // Amortiguación exponencial, no lerp con alfa fijo: el resultado no depende
+  // del framerate.
+  const velocidad = objetivo > fuerzaViento ? VIENTO.ataque : VIENTO.relajo;
+  fuerzaViento = lerp(fuerzaViento, objetivo, 1 - Math.exp(-velocidad * dt));
+
+  const giro = noise(relojEscena * VIENTO.velocidadDireccion, VIENTO.semillaDireccion) * 2 - 1;
+  direccionViento = VIENTO.direccionMedia + giro * VIENTO.direccionAmplitud;
 }
 
 /** Curva suave para degradados (smoothstep). */
@@ -118,38 +372,30 @@ function suavizar(t) {
 /* ---------- Atmósfera ---------- */
 
 /**
- * Cielo con gradiente, banda de bruma sobre el horizonte y polvo en
- * suspensión. La bruma es lo que apaga el fondo y produce la sensación
- * de aire quieto y ausencia de vida.
+ * Cielo con gradiente y banda de bruma sobre el horizonte. La bruma es lo que
+ * apaga el fondo y produce la sensación de distancia. El polvo que había acá
+ * ahora es dinámico (ver capa viva): quieto no aportaba el aire que se mueve.
  */
-function dibujarAtmosfera(horizonte) {
+function dibujarAtmosfera(g, horizonte) {
   const finCielo = horizonte + height * 0.04;
 
   // Gradiente vertical: oscuro arriba, claro al ras del suelo.
-  strokeWeight(1);
-  noFill();
+  g.strokeWeight(1);
+  g.noFill();
   for (let y = 0; y < finCielo; y += 1) {
     const t = suavizar(y / finCielo);
-    stroke(lerpColor(color(...PALETA.cieloAlto), color(...PALETA.cieloBajo), t));
-    line(0, y, width, y);
+    g.stroke(lerpColor(color(...PALETA.cieloAlto), color(...PALETA.cieloBajo), t));
+    g.line(0, y, width, y);
   }
 
   // Banda de bruma: se acumula justo sobre el horizonte.
-  noStroke();
+  g.noStroke();
   const altoBruma = height * 0.16;
   const pasos = 30;
   for (let i = 0; i < pasos; i += 1) {
     const t = i / (pasos - 1);
-    fill(PALETA.bruma[0], PALETA.bruma[1], PALETA.bruma[2], 30 * t);
-    rect(0, horizonte - altoBruma + t * altoBruma, width, altoBruma / pasos + 1);
-  }
-
-  // Polvo fino: puntos casi imperceptibles que dan textura al aire.
-  for (let i = 0; i < 120; i += 1) {
-    const x = random(width);
-    const y = random(horizonte + height * 0.03);
-    fill(PALETA.polvo[0], PALETA.polvo[1], PALETA.polvo[2], random(5, 18));
-    circle(x, y, random(1, 2.2));
+    g.fill(PALETA.bruma[0], PALETA.bruma[1], PALETA.bruma[2], 30 * t);
+    g.rect(0, horizonte - altoBruma + t * altoBruma, width, altoBruma / pasos + 1);
   }
 }
 
@@ -179,9 +425,9 @@ function bordeDeSuelo(x, capa, horizonte) {
  * Tres capas de terreno. Cada una se dibuja completa hasta el borde inferior,
  * así la siguiente tapa a la anterior: eso crea el escalonado de profundidad.
  */
-function dibujarSuelo(horizonte) {
+function dibujarSuelo(g, horizonte) {
   for (const capa of CAPAS_SUELO) {
-    dibujarCapaDeSuelo(capa, horizonte);
+    dibujarCapaDeSuelo(g, capa, horizonte);
   }
 }
 
@@ -189,31 +435,31 @@ function dibujarSuelo(horizonte) {
  * Una franja de terreno con borde superior irregular (noise) y estratos
  * internos que siguen el mismo relieve, como capas de tierra seca.
  */
-function dibujarCapaDeSuelo(capa, horizonte) {
+function dibujarCapaDeSuelo(g, capa, horizonte) {
   const tono = PALETA[capa.tono];
   const amplitud = height * capa.amplitud;
 
-  noStroke();
-  fill(tono[0], tono[1], tono[2]);
+  g.noStroke();
+  g.fill(tono[0], tono[1], tono[2]);
 
-  beginShape();
-  vertex(0, height);
+  g.beginShape();
+  g.vertex(0, height);
   for (let x = 0; x <= width; x += 5) {
-    vertex(x, bordeDeSuelo(x, capa, horizonte));
+    g.vertex(x, bordeDeSuelo(x, capa, horizonte));
   }
-  vertex(width, height);
-  endShape(CLOSE);
+  g.vertex(width, height);
+  g.endShape(CLOSE);
 
   // Estratos: líneas suaves paralelas al borde, apenas más oscuras.
-  noFill();
+  g.noFill();
   for (let i = 1; i <= 3; i += 1) {
-    stroke(tono[0] - 9, tono[1] - 9, tono[2] - 9, 95);
-    strokeWeight(1);
-    beginShape();
+    g.stroke(tono[0] - 9, tono[1] - 9, tono[2] - 9, 95);
+    g.strokeWeight(1);
+    g.beginShape();
     for (let x = 0; x <= width; x += 8) {
-      vertex(x, bordeDeSuelo(x, capa, horizonte) + amplitud * 0.85 * i);
+      g.vertex(x, bordeDeSuelo(x, capa, horizonte) + amplitud * 0.85 * i);
     }
-    endShape();
+    g.endShape();
   }
 }
 
@@ -223,26 +469,52 @@ function dibujarCapaDeSuelo(capa, horizonte) {
  * Árboles secos repartidos en los tres planos.
  * Los lejanos son chicos y claros (la bruma los come); los cercanos son
  * grandes, oscuros y con más ramificación.
+ *
+ * Cada árbol se hornea como sprite porque dibujarlo por frame costaría cientos
+ * de trazos. `balanceo` es la amplitud de giro en radianes y escala con la
+ * profundidad: un árbol cercano recorre más píxeles en la copa que uno lejano.
  */
-function dibujarArboles(horizonte) {
+function crearArbolesViento() {
+  const lista = [];
+  let semillaArbol = 0;
+
+  const agregar = (x, y, alto, grosor, tono, niveles, inclinacion, balanceo, plano) => {
+    // Semilla propia por árbol: el noise está en coordenadas locales, así que
+    // sin este desplazamiento todos saldrían con la misma forma.
+    semillaArbol += 37.7;
+
+    const sprite = crearSpriteDeArbol(alto, grosor, tono, niveles, inclinacion, semillaArbol);
+    lista.push({
+      grafico: sprite.grafico,
+      x,
+      y,
+      alto,
+      ancho: sprite.ancho,
+      baseY: sprite.baseY,
+      balanceo,
+      plano, // 0 lejos, 1 medio, 2 cerca: define el orden y dónde camina el personaje
+      fase: random(TWO_PI), // desfase del vaivén: no se mueven en bloque
+    });
+  };
+
   // Plano lejano
   const posicionesLejanas = [0.06, 0.18, 0.33, 0.5, 0.67, 0.86];
   for (const fx of posicionesLejanas) {
     const x = width * (fx + random(-0.015, 0.015));
     // Base sobre el borde real de la capa, hundida unos píxeles: la raíz
     // tiene que apoyarse en la tierra, no quedar en el aire.
-    const y = bordeDeSuelo(x, CAPAS_SUELO[0], horizonte) + height * 0.004;
+    const y = bordeDeSuelo(x, CAPAS_SUELO[0], horizonteEscena) + height * 0.004;
     const alto = height * random(0.09, 0.14);
-    dibujarArbol(x, y, alto, 1.6, PALETA.arbolLejos, 3, random(-0.14, 0.14));
+    agregar(x, y, alto, 1.6, PALETA.arbolLejos, 3, random(-0.14, 0.14), 0.012, 0);
   }
 
   // Plano medio
   const posicionesMedias = [0.22, 0.44, 0.6, 0.82];
   for (const fx of posicionesMedias) {
     const x = width * (fx + random(-0.02, 0.02));
-    const y = bordeDeSuelo(x, CAPAS_SUELO[1], horizonte) + height * 0.005;
+    const y = bordeDeSuelo(x, CAPAS_SUELO[1], horizonteEscena) + height * 0.005;
     const alto = height * random(0.16, 0.23);
-    dibujarArbol(x, y, alto, 3.2, PALETA.arbolMedio, 4, random(-0.16, 0.16));
+    agregar(x, y, alto, 3.2, PALETA.arbolMedio, 4, random(-0.16, 0.16), 0.022, 1);
   }
 
   // Plano cercano: el del borde derecho queda cortado por el encuadre.
@@ -254,9 +526,56 @@ function dibujarArboles(horizonte) {
 
   for (const arbol of posicionesCercanas) {
     const x = width * arbol.fx;
-    const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + height * 0.008;
+    const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonteEscena) + height * 0.008;
     const alto = height * arbol.alto * random(0.94, 1.06);
-    dibujarArbol(x, y, alto, arbol.grosor, PALETA.arbolCerca, 5, random(-0.18, 0.06));
+    agregar(x, y, alto, arbol.grosor, PALETA.arbolCerca, 5, random(-0.18, 0.06), 0.035, 2);
+  }
+
+  return lista;
+}
+
+/**
+ * Hornea un árbol en su propio canvas transparente con el pie en (0,0) del
+ * buffer. El margen es generoso a propósito: las ramas se abren más que el
+ * tronco y no pueden quedar cortadas.
+ */
+function crearSpriteDeArbol(alto, grosor, tono, niveles, inclinacion, semilla) {
+  // 2.4× de ancho y 1.9× de alto: la recursión de ramas puede trepar más de
+  // una vez la altura del árbol, y una rama cortada por el borde del buffer
+  // se notaría como un muñón.
+  const ancho = Math.max(48, Math.ceil(alto * 2.4));
+  const altoBuffer = Math.max(48, Math.ceil(alto * 1.9));
+  const baseY = altoBuffer - Math.ceil(alto * 0.06);
+
+  const g = createGraphics(ancho, altoBuffer);
+  g.pixelDensity(1);
+
+  g.push();
+  g.translate(ancho * 0.5, baseY);
+  dibujarArbol(g, 0, 0, alto, grosor, tono, niveles, inclinacion, semilla);
+  g.pop();
+
+  return { grafico: g, ancho, baseY };
+}
+
+/**
+ * Dibuja los árboles con el giro que les da el viento. Pivota en la base: el
+ * árbol se dobla, no se desliza. A 2° de giro el movimiento se lee en la copa
+ * y no en la raíz, que es exactamente lo que hace un árbol con viento.
+ */
+function dibujarArbolesViento(t, plano) {
+  for (const arbol of arbolesViento) {
+    if (arbol.plano !== plano) continue;
+
+    const vaiven =
+      Math.sin(t * VIENTO.velocidadVaiven + arbol.fase) * 0.35 + fuerzaViento * 0.9;
+    const angulo = vaiven * arbol.balanceo * direccionViento;
+
+    push();
+    translate(arbol.x, arbol.y);
+    rotate(angulo);
+    image(arbol.grafico, -arbol.ancho * 0.5, -arbol.baseY);
+    pop();
   }
 }
 
@@ -264,155 +583,725 @@ function dibujarArboles(horizonte) {
  * Un árbol sin hojas: base ensanchada, tronco levemente curvado y ramas
  * que se abren desde la copa. Todo con trazos redondeados, sin relleno
  * fotográfico, para que quede ilustrado y orgánico.
+ *
+ * `g` es el destino del dibujo (un p5.Graphics o el canvas principal) y
+ * `semilla` desplaza el campo de noise para que dos árboles no sean gemelos.
  */
-function dibujarArbol(x, yBase, alto, grosor, tono, niveles, inclinacion) {
+function dibujarArbol(g, x, yBase, alto, grosor, tono, niveles, inclinacion, semilla) {
   const angulo = -HALF_PI + inclinacion;
   const altoTronco = alto * 0.45;
   const xCopa = x + Math.cos(angulo) * altoTronco;
   const yCopa = yBase + Math.sin(angulo) * altoTronco;
 
   // Base: la raíz agarra la tierra, por eso es más ancha que el tronco.
-  noStroke();
-  fill(tono[0], tono[1], tono[2]);
-  ellipse(x, yBase, grosor * 2.1, grosor * 0.8);
+  g.noStroke();
+  g.fill(tono[0], tono[1], tono[2]);
+  g.ellipse(x, yBase, grosor * 2.1, grosor * 0.8);
 
   // Tronco en dos tramos con una curva suave: nada de líneas perfectas.
-  stroke(tono[0], tono[1], tono[2]);
-  strokeCap(ROUND);
+  g.stroke(tono[0], tono[1], tono[2]);
+  g.strokeCap(ROUND);
   const xMedio = lerp(x, xCopa, 0.5) + Math.cos(angulo + HALF_PI) * alto * 0.035;
   const yMedio = lerp(yBase, yCopa, 0.55);
 
-  strokeWeight(grosor);
-  line(x, yBase, xMedio, yMedio);
-  strokeWeight(grosor * 0.82);
-  line(xMedio, yMedio, xCopa, yCopa);
+  g.strokeWeight(grosor);
+  g.line(x, yBase, xMedio, yMedio);
+  g.strokeWeight(grosor * 0.82);
+  g.line(xMedio, yMedio, xCopa, yCopa);
 
   // Ramas principales desde la copa.
-  dibujarRama(xCopa, yCopa, altoTronco * 0.85, angulo - 0.3, grosor * 0.68, niveles, tono);
-  dibujarRama(xCopa, yCopa, altoTronco * 0.78, angulo + 0.26, grosor * 0.62, niveles, tono);
-  dibujarRama(xMedio, yMedio, altoTronco * 0.55, angulo - 0.75, grosor * 0.45, niveles - 1, tono);
+  dibujarRama(g, xCopa, yCopa, altoTronco * 0.85, angulo - 0.3, grosor * 0.68, niveles, tono, semilla);
+  dibujarRama(g, xCopa, yCopa, altoTronco * 0.78, angulo + 0.26, grosor * 0.62, niveles, tono, semilla);
+  dibujarRama(g, xMedio, yMedio, altoTronco * 0.55, angulo - 0.75, grosor * 0.45, niveles - 1, tono, semilla);
 }
 
 /**
  * Rama recursiva. Se abre en dos o tres direcciones con ángulos tomados de
  * noise() —no de random()— para que el árbol sea siempre el mismo.
  */
-function dibujarRama(x, y, largo, angulo, grosor, nivel, tono) {
+function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla) {
   if (nivel <= 0 || grosor < 0.6 || largo < 2) return;
 
   const x2 = x + Math.cos(angulo) * largo;
   const y2 = y + Math.sin(angulo) * largo;
 
-  stroke(tono[0], tono[1], tono[2]);
-  strokeWeight(grosor);
-  line(x, y, x2, y2);
+  g.stroke(tono[0], tono[1], tono[2]);
+  g.strokeWeight(grosor);
+  g.line(x, y, x2, y2);
 
-  const apertura = 0.3 + noise(x * 0.015, y * 0.015) * 0.35;
-  const acortar = 0.64 + noise(y * 0.02, x * 0.02) * 0.14;
+  const apertura = 0.3 + noise(x * 0.015 + semilla, y * 0.015) * 0.35;
+  const acortar = 0.64 + noise(y * 0.02, x * 0.02 + semilla) * 0.14;
 
-  dibujarRama(x2, y2, largo * acortar, angulo - apertura, grosor * 0.62, nivel - 1, tono);
-  dibujarRama(x2, y2, largo * acortar * 0.92, angulo + apertura * 0.8, grosor * 0.58, nivel - 1, tono);
+  dibujarRama(g, x2, y2, largo * acortar, angulo - apertura, grosor * 0.62, nivel - 1, tono, semilla);
+  dibujarRama(g, x2, y2, largo * acortar * 0.92, angulo + apertura * 0.8, grosor * 0.58, nivel - 1, tono, semilla);
 
   // Tercera rama ocasional: rompe la simetría del árbol.
-  if (nivel > 2 && noise(x * 0.03, y * 0.03) > 0.42) {
-    dibujarRama(x2, y2, largo * acortar * 0.7, angulo + apertura * 0.1, grosor * 0.42, nivel - 1, tono);
+  if (nivel > 2 && noise(x * 0.03 + semilla, y * 0.03) > 0.42) {
+    dibujarRama(g, x2, y2, largo * acortar * 0.7, angulo + apertura * 0.1, grosor * 0.42, nivel - 1, tono, semilla);
   }
 }
 
 /* ---------- Elementos decorativos ---------- */
 
-/** Piedras, matojos secos y ramas caídas. Más grandes cuanto más cerca. */
-function dibujarElementos(horizonte) {
+/** Piedras y ramas caídas. Más grandes cuanto más cerca. */
+function dibujarElementos(g, horizonte) {
   // Piedras lejanas: apoyadas sobre la primera capa.
   for (let i = 0; i < 7; i += 1) {
     const x = random(width);
     const y = bordeDeSuelo(x, CAPAS_SUELO[0], horizonte) + height * random(0.01, 0.05);
-    dibujarPiedra(x, y, random(3, 6), PALETA.piedraLejos);
+    dibujarPiedra(g, x, y, random(3, 6), PALETA.piedraLejos);
   }
 
   // Piedras del plano medio
   for (let i = 0; i < 6; i += 1) {
     const x = random(width);
     const y = bordeDeSuelo(x, CAPAS_SUELO[1], horizonte) + height * random(0.02, 0.09);
-    dibujarPiedra(x, y, random(6, 11), PALETA.piedraMedia);
+    dibujarPiedra(g, x, y, random(6, 11), PALETA.piedraMedia);
   }
 
   // Piedras cercanas: las que dan escala al primer plano
   for (let i = 0; i < 5; i += 1) {
     const x = random(width);
     const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + height * random(0.03, 0.13);
-    dibujarPiedra(x, y, random(13, 22), PALETA.piedraCerca);
-  }
-
-  // Matojos secos: briznas que se doblan, nunca verticales del todo
-  for (let i = 0; i < 9; i += 1) {
-    const x = random(width);
-    const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + height * random(0.01, 0.16);
-    dibujarMatujo(x, y, height * random(0.022, 0.05), PALETA.pastoSeco);
+    dibujarPiedra(g, x, y, random(13, 22), PALETA.piedraCerca);
   }
 
   // Ramas caídas en el primer plano
   for (let i = 0; i < 3; i += 1) {
     const x = random(width);
     const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + height * random(0.04, 0.14);
-    dibujarRama(x, y, height * random(0.03, 0.06), random(-0.5, 0.5), 2, 2, PALETA.arbolCerca);
+    dibujarRama(g, x, y, height * random(0.03, 0.06), random(-0.5, 0.5), 2, 2, PALETA.arbolCerca, i * 23.1);
   }
+
+  // El pasto seco ya no vive acá: es capa viva, ver dibujarMatujosViento().
 }
 
 /** Piedra irregular y achatada, con una luz tenue arriba que le da volumen. */
-function dibujarPiedra(x, y, tam, tono) {
+function dibujarPiedra(g, x, y, tam, tono) {
   const lados = 7;
 
-  noStroke();
-  fill(tono[0], tono[1], tono[2]);
-  beginShape();
+  g.noStroke();
+  g.fill(tono[0], tono[1], tono[2]);
+  g.beginShape();
   for (let i = 0; i < lados; i += 1) {
     const angulo = (TWO_PI / lados) * i;
     const radio = tam * (0.7 + noise(x * 0.05 + i, y * 0.05) * 0.55);
     // Más ancha que alta: ninguna piedra natural es una esfera perfecta.
-    vertex(x + Math.cos(angulo) * radio * 1.25, y + Math.sin(angulo) * radio * 0.6);
+    g.vertex(x + Math.cos(angulo) * radio * 1.25, y + Math.sin(angulo) * radio * 0.6);
   }
-  endShape(CLOSE);
+  g.endShape(CLOSE);
 
-  noFill();
-  stroke(tono[0] + 26, tono[1] + 26, tono[2] + 26, 120);
-  strokeWeight(max(0.8, tam * 0.07));
-  arc(x, y - tam * 0.05, tam * 1.9, tam * 0.85, PI + 0.4, TWO_PI - 0.4);
+  g.noFill();
+  g.stroke(tono[0] + 26, tono[1] + 26, tono[2] + 26, 120);
+  g.strokeWeight(max(0.8, tam * 0.07));
+  g.arc(x, y - tam * 0.05, tam * 1.9, tam * 0.85, PI + 0.4, TWO_PI - 0.4);
 }
 
-/** Matujo de pasto seco: varias briznas curvas que nacen del mismo punto. */
-function dibujarMatujo(x, y, alto, tono) {
-  const briznas = 5 + Math.floor(random(3));
+/* ---------- Fábricas ---------- */
+
+/**
+ * Geometría de las chimeneas lejanas. Se calcula una sola vez porque el fondo
+ * las dibuja y el humo necesita la boca exacta de cada una para nacer de ahí.
+ * Usa la primera capa de suelo, la misma de los árboles lejanos: así la base
+ * se apoya en el relieve y no flota.
+ */
+function crearFabricas() {
+  const lista = [];
+
+  for (const fuente of FABRICA.fuentes) {
+    const x = width * fuente.fx;
+    const yBase = bordeDeSuelo(x, CAPAS_SUELO[0], horizonteEscena) + height * 0.004;
+    const anchoCuerpo = height * fuente.ancho;
+    const altoCuerpo = height * fuente.cuerpo;
+    const altoChimenea = height * fuente.chimenea;
+
+    lista.push({
+      x,
+      yBase,
+      anchoCuerpo,
+      altoCuerpo,
+      altoChimenea,
+      anchoChimenea: max(2, anchoCuerpo * 0.22),
+      // La chimenea no sale del centro: una fábrica real tiene el horno a un
+      // lado, y ese desfasaje es lo que la hace leer como fábrica y no como
+      // un rectángulo con un palo.
+      xChimenea: x + anchoCuerpo * 0.2,
+      yTope: yBase - altoCuerpo - altoChimenea,
+    });
+  }
+
+  return lista;
+}
+
+/**
+ * Siluetas planas, sin ventanas ni detalles: a esta distancia, con esta paleta
+ * y detrás de la bruma, solo se lee el contorno. El color es más claro que el
+ * suelo para que el ojo las mande al fondo.
+ */
+function dibujarFabricas(g) {
+  g.noStroke();
+  g.fill(FABRICA.color[0], FABRICA.color[1], FABRICA.color[2]);
+
+  for (const fuente of fabricasViento) {
+    // Galpón: bajo y ancho.
+    g.rect(
+      fuente.x - fuente.anchoCuerpo * 0.5,
+      fuente.yBase - fuente.altoCuerpo,
+      fuente.anchoCuerpo,
+      fuente.altoCuerpo
+    );
+
+    // Chimenea: más alta que el galpón, que es lo que la delata como fábrica.
+    g.rect(
+      fuente.xChimenea - fuente.anchoChimenea * 0.5,
+      fuente.yTope,
+      fuente.anchoChimenea,
+      fuente.altoChimenea + fuente.altoCuerpo
+    );
+  }
+}
+
+/* ============================================================
+   CAPA VIVA
+   Pasto, polvo y rachas. Son pocos trazos por frame, así que se
+   pueden redibujar a 60 fps. Todo lee el mismo viento.
+   ============================================================ */
+
+/**
+ * Genera los matujos una sola vez: posición, alto y la forma de cada brizna.
+ * Si la posición se sorteara por frame, las matas bailarían por la pantalla en
+ * lugar de doblarse con el viento.
+ */
+function crearMatujos() {
+  const lista = [];
+
+  for (let i = 0; i < MATUJOS.cantidad; i += 1) {
+    const x = width * random(0.01, 0.99);
+    const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonteEscena) + height * random(0.01, 0.17);
+    const alto = height * random(MATUJOS.alturaMinima, MATUJOS.alturaMaxima);
+
+    const briznas = [];
+    const cantidadBriznas = 4 + Math.floor(random(4));
+    for (let b = 0; b < cantidadBriznas; b += 1) {
+      briznas.push({
+        inclinacion: random(-0.55, 0.55),
+        largo: random(0.6, 1),
+        fase: random(TWO_PI),
+        // Rigidez: cuánto se resiste a doblarse. Sin variedad, el matujo
+        // entero se doblaría como una sola pieza.
+        rigidez: random(0.55, 1),
+      });
+    }
+
+    lista.push({ x, y, alto, briznas });
+  }
+
+  return lista;
+}
+
+/**
+ * Pasto doblándose con el viento. Cada brizna CONSERVA SU LARGO y gira sobre su
+ * base: por eso la punta baja al doblarse, y eso es lo que se lee como viento
+ * y no como un estiramiento.
+ */
+function dibujarMatujosViento(t) {
+  const tono = PALETA.pastoSeco;
 
   stroke(tono[0], tono[1], tono[2], 190);
   strokeWeight(1.2);
   noFill();
 
-  for (let i = 0; i < briznas; i += 1) {
-    const inclinacion = random(-0.55, 0.55);
-    const alturaBrizna = alto * random(0.6, 1);
-    const xFin = x + Math.sin(inclinacion) * alturaBrizna;
-    const yFin = y - Math.cos(inclinacion) * alturaBrizna;
+  for (const matujo of matujosViento) {
+    for (const brizna of matujo.briznas) {
+      const largo = matujo.alto * brizna.largo;
+      const temblor =
+        Math.sin(t * MATUJOS.velocidadTemblor + brizna.fase) * MATUJOS.temblorMaximo * fuerzaViento;
+      const doblez =
+        (fuerzaViento * MATUJOS.doblezMaximo * brizna.rigidez + temblor) * direccionViento;
 
-    // Control de la curva: a media altura, desplazado hacia la inclinación.
-    const cx = x + Math.sin(inclinacion * 0.5) * alturaBrizna * 0.6;
-    const cy = y - alturaBrizna * 0.6;
+      // La punta se ubica sobre el círculo de radio `largo`; el control va más
+      // cerca de la vertical para que la curva no sea un arco rígido.
+      //
+      // El ángulo se acota antes de llegar a 90°: pasado ese punto la punta
+      // apuntaría hacia abajo y la brizna se clavaría en la tierra. Aplanada
+      // al máximo, en cambio, se lee como pasto doblegado por la ráfaga.
+      const limite = MATUJOS.anguloMaximo;
+      const anguloPunta = constrain(brizna.inclinacion + doblez, -limite, limite);
+      const anguloControl = constrain(brizna.inclinacion + doblez * 0.4, -limite, limite);
 
-    // Curva de Bézier cuadrática calculada a mano y muestreada como polilínea.
-    // p5 2.x NO expone quadraticVertex(), así que no se puede usar.
-    const segmentos = 6;
-    beginShape();
-    vertex(x, y);
-    for (let paso = 1; paso <= segmentos; paso += 1) {
-      const t = paso / segmentos;
-      const inv = 1 - t;
-      vertex(
-        inv * inv * x + 2 * inv * t * cx + t * t * xFin,
-        inv * inv * y + 2 * inv * t * cy + t * t * yFin
-      );
+      const xFin = matujo.x + Math.sin(anguloPunta) * largo;
+      const yFin = matujo.y - Math.cos(anguloPunta) * largo;
+      const cx = matujo.x + Math.sin(anguloControl) * largo * 0.55;
+      const cy = matujo.y - Math.cos(anguloControl) * largo * 0.6;
+
+      // Curva de Bézier cuadrática calculada a mano y muestreada como
+      // polilínea. p5 2.x NO expone quadraticVertex(), así que no se puede usar.
+      beginShape();
+      vertex(matujo.x, matujo.y);
+      for (let paso = 1; paso <= MATUJOS.segmentos; paso += 1) {
+        const tt = paso / MATUJOS.segmentos;
+        const inv = 1 - tt;
+        vertex(
+          inv * inv * matujo.x + 2 * inv * tt * cx + tt * tt * xFin,
+          inv * inv * matujo.y + 2 * inv * tt * cy + tt * tt * yFin
+        );
+      }
+      endShape();
     }
+  }
+}
+
+/** Polvo en suspensión: el viento lo arrastra y lo recicla por los bordes. */
+function crearPolvo() {
+  const lista = [];
+
+  for (let i = 0; i < POLVO_AIRE.cantidad; i += 1) {
+    lista.push({
+      x: random(width),
+      y: random(0, horizonteEscena + height * 0.08),
+      tamano: random(POLVO_AIRE.tamanoMinimo, POLVO_AIRE.tamanoMaximo),
+      alfa: random(POLVO_AIRE.alfaMinimo, POLVO_AIRE.alfaMaximo),
+      // Cada partícula pesa distinto: sin esto el polvo se movería en bloque.
+      empuje: random(0.25, 1),
+      deriva: random(-4, 4),
+      fase: random(TWO_PI),
+    });
+  }
+
+  return lista;
+}
+
+function actualizarDibujarPolvo(t, dt) {
+  const tono = PALETA.polvo;
+  const limiteY = horizonteEscena + height * 0.1;
+  const velocidad = POLVO_AIRE.empujeMinimo + fuerzaViento * POLVO_AIRE.empujeMaximo;
+
+  noStroke();
+
+  for (const particula of polvoAire) {
+    particula.x += velocidad * particula.empuje * direccionViento * dt;
+    particula.y += (Math.sin(t * 1.4 + particula.fase) * 3 + particula.deriva) * dt;
+
+    if (particula.x > width + 12) particula.x = -12;
+    else if (particula.x < -12) particula.x = width + 12;
+
+    if (particula.y < -12) particula.y = limiteY;
+    else if (particula.y > limiteY) particula.y = -12;
+
+    fill(tono[0], tono[1], tono[2], particula.alfa * (0.55 + fuerzaViento * 0.45));
+    circle(particula.x, particula.y, particula.tamano);
+  }
+}
+
+/** Rachas: líneas tenues que cruzan el cielo y delatan la corriente de aire. */
+function crearRachas() {
+  const lista = [];
+
+  for (let i = 0; i < RACHAS.cantidad; i += 1) {
+    lista.push({
+      x: random(width),
+      y: random(height * 0.02, horizonteEscena * 0.92),
+      largo: width * random(RACHAS.largoMinimo, RACHAS.largoMaximo),
+      velocidad: random(RACHAS.velocidadMinima, RACHAS.velocidadMaxima),
+      alfa: random(0.4, 1),
+      grosor: random(0.7, 1.6),
+      fase: random(TWO_PI),
+    });
+  }
+
+  return lista;
+}
+
+function dibujarRachas(t, dt) {
+  const tono = PALETA.polvo;
+  const alfa = RACHAS.alfa * (0.35 + fuerzaViento * 0.65);
+
+  noFill();
+
+  for (const racha of rachasViento) {
+    // Más viento, más rápido: la ráfaga se ve en el aire, no solo en el pasto.
+    racha.x += racha.velocidad * (1 + fuerzaViento * 2.5) * dt;
+    if (racha.x > width) racha.x = -racha.largo;
+
+    const y = racha.y + Math.sin(t * 0.8 + racha.fase) * height * 0.006;
+
+    stroke(tono[0], tono[1], tono[2], alfa * racha.alfa);
+    strokeWeight(racha.grosor);
+    beginShape();
+    vertex(racha.x, y);
+    vertex(racha.x + racha.largo * 0.5, y + Math.sin(t * 1.3 + racha.fase) * 2);
+    vertex(racha.x + racha.largo, y);
     endShape();
   }
+}
+
+/* ---------- Humo de fábrica ---------- */
+
+/**
+ * Una columna de bocanadas por chimenea. El progreso de cada una arranca
+ * escalonado para que el penacho ya exista en el primer frame: si todas
+ * nacieran en el mismo instante, la primera vez se vería salir un anillo.
+ */
+function crearHumo() {
+  const lista = [];
+
+  for (const fuente of fabricasViento) {
+    const puffs = [];
+
+    for (let i = 0; i < FABRICA.humoPuffs; i += 1) {
+      puffs.push({
+        progreso: i / FABRICA.humoPuffs,
+        vida: random(FABRICA.humoVidaMinima, FABRICA.humoVidaMaxima),
+        escala: random(0.7, 1.15),
+        desvio: random(-0.35, 0.35),
+        fase: random(TWO_PI),
+      });
+    }
+
+    lista.push({ fuente, puffs });
+  }
+
+  return lista;
+}
+
+/**
+ * Humo leve que sube de las chimeneas y se abre a favor del viento.
+ * Cada bocanada es un círculo que crece y se desvanece mientras sube: es la
+ * forma más barata de leer humo, y con alfa bajo no tapa el paisaje.
+ */
+function dibujarHumo(t, dt) {
+  const tono = FABRICA.humoColor;
+  const subida = height * FABRICA.humoSubida;
+  const deriva = width * FABRICA.humoDeriva * (0.45 + fuerzaViento * 0.55) * direccionViento;
+
+  noStroke();
+
+  for (const columna of humoViento) {
+    for (const puff of columna.puffs) {
+      puff.progreso += dt / puff.vida;
+      if (puff.progreso >= 1) puff.progreso -= 1;
+
+      const p = puff.progreso;
+
+      // Arranca en la boca de la chimenea y se abre en curva: exponente > 1 en
+      // la deriva para que el penacho salga vertical y no torcido.
+      const x =
+        columna.fuente.xChimenea +
+        Math.pow(p, 1.8) * deriva +
+        puff.desvio * height * 0.02 * p +
+        Math.sin(t * 0.9 + puff.fase) * height * 0.008 * p;
+      const y = columna.fuente.yTope - Math.pow(p, 0.85) * subida;
+      const diametro =
+        lerp(
+          height * FABRICA.humoDiametroInicial,
+          height * FABRICA.humoDiametroFinal,
+          Math.pow(p, 0.7)
+        ) * puff.escala;
+
+      // Fade-in corto y fade-out largo: nace denso y se desarma arriba.
+      const alfa = FABRICA.humoAlfa * (1 - p) * Math.min(1, p * 5);
+      if (alfa < 0.6) continue;
+
+      fill(tono[0], tono[1], tono[2], alfa);
+      circle(x, y, diametro);
+    }
+  }
+}
+
+/* ============================================================
+   PERSONAJE
+   Camina por el plano medio, en bucle, y se detiene a mirar un
+   árbol seco antes de ponerse triste. Es un sprite único: el
+   caminar y la tristeza son transformaciones sobre la misma
+   imagen, no cuadros de animación.
+   ============================================================ */
+
+/**
+ * Carga el sprite. En p5 2.x `loadImage` es ASYNC —devuelve una promesa, no la
+ * imagen—, y `setup()` es sincrónico a propósito. Se usan callbacks: si el
+ * archivo falta, el paisaje ya está andando y solo se pierde el personaje.
+ */
+function cargarPersonaje() {
+  if (personaje.imagen || personaje.cargando) return;
+
+  if (typeof loadImage !== 'function') {
+    console.error('[personaje] loadImage no está disponible.');
+    return;
+  }
+
+  personaje.cargando = true;
+
+  loadImage(
+    PERSONAJE.rutaImagen,
+    (imagen) => {
+      personaje.cargando = false;
+      recortarFondoImagen(imagen);
+
+      personaje.imagen = imagen;
+      // El ancho real depende de la proporción de la imagen; hasta que llega,
+      // reiniciarPersonaje() usa una estimación.
+      personaje.ancho = personaje.alto * (imagen.width / imagen.height);
+      ubicarParada();
+
+      console.info(`[personaje] Listo: ${imagen.width}×${imagen.height}`);
+    },
+    (error) => {
+      personaje.cargando = false;
+      console.error(
+        `[personaje] No se pudo cargar "${PERSONAJE.rutaImagen}". Guardá la imagen en la raíz del proyecto, junto a index.html.`,
+        error
+      );
+    }
+  );
+}
+
+/** Vuelve el personaje al arranque del bucle. Se llama al construir la escena. */
+function reiniciarPersonaje() {
+  personaje.alto = height * PERSONAJE.altura;
+  personaje.ancho = personaje.imagen
+    ? personaje.alto * (personaje.imagen.width / personaje.imagen.height)
+    : personaje.alto * 0.84; // proporción estimada mientras no hay imagen
+
+  personaje.arbol = arbolDeMirada();
+  ubicarParada();
+
+  personaje.x = -personaje.ancho;
+  personaje.estado = 'caminando';
+  personaje.relojEstado = 0;
+  personaje.relojLagrima = 0;
+  personaje.miradaHecha = false;
+  personaje.fasePaso = 0;
+  personaje.inclinacion = 0;
+  personaje.hundimiento = 1;
+  personaje.lagrimas.length = 0;
+}
+
+/**
+ * El árbol seco al que le va a doler mirar: el más alto del plano medio, que es
+ * el que tiene ramas a su altura. Devuelve null si todavía no hay árboles.
+ */
+function arbolDeMirada() {
+  let elegido = null;
+
+  for (const arbol of arbolesViento) {
+    if (arbol.plano !== 1) continue;
+    if (!elegido || arbol.alto > elegido.alto) elegido = arbol;
+  }
+
+  return elegido;
+}
+
+/** La parada queda justo antes del árbol: lo mira de frente, no de costado. */
+function ubicarParada() {
+  const arbol = personaje.arbol;
+  personaje.xParada = arbol ? arbol.x - personaje.ancho * 0.85 : width * 0.55;
+}
+
+/**
+ * Camina → frena → mira las ramas → se pone triste → sigue caminando. Al salir
+ * por la derecha reingresa por la izquierda: el bucle no tiene costura.
+ * Todo el avance sale de `dt`, así que no depende del framerate.
+ */
+function actualizarPersonaje(dt) {
+  actualizarLagrimas(dt);
+
+  if (!personaje.imagen) return;
+
+  personaje.relojEstado += dt;
+
+  if (personaje.estado === 'caminando') {
+    personaje.x += height * PERSONAJE.velocidad * dt;
+    personaje.fasePaso += dt * PERSONAJE.pasos;
+
+    // `miradaHecha` evita volver a frenar en el mismo árbol: retomando la
+    // caminata ya está parado sobre la marca y sin la bandera se quedaría
+    // mirando en bucle sin avanzar nunca.
+    if (!personaje.miradaHecha && personaje.x >= personaje.xParada) {
+      personaje.miradaHecha = true;
+      personaje.estado = 'mirando';
+      personaje.relojEstado = 0;
+    }
+  } else if (personaje.estado === 'mirando') {
+    if (personaje.relojEstado >= PERSONAJE.duracionMirar) {
+      personaje.estado = 'triste';
+      personaje.relojEstado = 0;
+      personaje.relojLagrima = 0;
+      soltarLagrima();
+    }
+  } else {
+    // Triste: mientras dure, se le escapa una lágrima cada tanto. Una sola
+    // sería invisible a esta escala; un chorro parecería una canilla.
+    personaje.relojLagrima += dt;
+    if (personaje.relojLagrima >= PERSONAJE.cadaLagrima) {
+      personaje.relojLagrima = 0;
+      soltarLagrima();
+    }
+
+    if (personaje.relojEstado >= PERSONAJE.duracionTriste) {
+      personaje.estado = 'caminando';
+      personaje.relojEstado = 0;
+    }
+  }
+
+  // Fuera de pantalla por la derecha: reingresa por la izquierda.
+  if (personaje.x > width + personaje.ancho) {
+    personaje.x = -personaje.ancho;
+    personaje.estado = 'caminando';
+    personaje.relojEstado = 0;
+    personaje.miradaHecha = false; // en la vuelta siguiente vuelve a frenar
+    personaje.lagrimas.length = 0;
+  }
+
+  // Pose: mirar = se echa atrás para ver las ramas; triste = cabecea y se
+  // hunde en sí mismo. El pasaje es exponencial: no hay salto entre estados.
+  let objetivo = 0;
+  if (personaje.estado === 'mirando') objetivo = PERSONAJE.inclinacionMirar;
+  else if (personaje.estado === 'triste') objetivo = PERSONAJE.inclinacionTriste;
+
+  const k = 1 - Math.exp(-PERSONAJE.suavizado * dt);
+  personaje.inclinacion = lerp(personaje.inclinacion, objetivo, k);
+
+  const objetivoHundimiento = personaje.estado === 'triste' ? PERSONAJE.hundimiento : 1;
+  personaje.hundimiento = lerp(personaje.hundimiento, objetivoHundimiento, k);
+}
+
+/**
+ * Dibuja el sprite anclado en los pies, con el vaivén del paso. El origen es el
+ * suelo, así que el hundimiento y el rebote no lo hacen flotar.
+ */
+function dibujarPersonaje() {
+  if (!personaje.imagen) return;
+
+  const ancho = personaje.ancho;
+  const alto = personaje.alto;
+  // Base sobre la capa de suelo del plano medio: al caminar sigue el relieve,
+  // así que sube y baja con la tierra en vez de moverse en línea recta.
+  const base = bordeDeSuelo(personaje.x, CAPAS_SUELO[1], horizonteEscena) + height * 0.004;
+
+  const caminando = personaje.estado === 'caminando';
+  const balanceo = caminando ? Math.sin(personaje.fasePaso * Math.PI) * PERSONAJE.balanceoPaso : 0;
+  // Un rebote por paso: el cuerpo sube cuando el peso pasa por la pierna.
+  const rebote = caminando ? Math.abs(Math.sin(personaje.fasePaso * Math.PI)) * alto * 0.03 : 0;
+
+  push();
+  translate(personaje.x, base - rebote);
+  rotate(personaje.inclinacion + balanceo);
+  scale(1, personaje.hundimiento);
+  image(personaje.imagen, -ancho * 0.5, -alto, ancho, alto);
+  dibujarLagrimas();
+  pop();
+}
+
+/* ---------- Personaje: lágrima ---------- */
+
+/** Una lágrima nace en el ojo cuando se pone triste. */
+function soltarLagrima() {
+  personaje.lagrimas.push({
+    x: (PERSONAJE.ojo.x - 0.5) * personaje.ancho,
+    y: (PERSONAJE.ojo.y - 1) * personaje.alto,
+    velocidad: 0,
+    edad: 0,
+  });
+}
+
+function actualizarLagrimas(dt) {
+  for (const gota of personaje.lagrimas) {
+    gota.velocidad += personaje.alto * 2.4 * dt;
+    gota.y += gota.velocidad * dt;
+    gota.edad += dt;
+  }
+
+  personaje.lagrimas = personaje.lagrimas.filter((gota) => gota.edad < 1.2);
+}
+
+/** Se dibuja dentro del push/rotate del personaje: coordenadas locales. */
+function dibujarLagrimas() {
+  if (!personaje.lagrimas.length) return;
+
+  const diametro = max(1.8, personaje.alto * 0.045);
+
+  noStroke();
+  for (const gota of personaje.lagrimas) {
+    fill(188, 222, 240, 210 * (1 - gota.edad / 1.2));
+    circle(gota.x, gota.y, diametro);
+  }
+}
+
+/* ---------- Personaje: recorte del fondo ---------- */
+
+/**
+ * Recorta el fondo claro del sprite para que el paisaje se vea detrás.
+ * Inunda desde los bordes en vez de usar un umbral global: los ojos del
+ * personaje también son blancos y con un umbral global se borrarían.
+ */
+function recortarFondoImagen(imagen) {
+  if (!PERSONAJE.toleranciaFondo) return;
+
+  imagen.loadPixels();
+  const cambiados = recortarFondoClaro(
+    imagen.pixels,
+    imagen.width,
+    imagen.height,
+    PERSONAJE.toleranciaFondo
+  );
+  imagen.updatePixels();
+
+  console.info(`[personaje] Fondo recortado: ${cambiados} px`);
+}
+
+/**
+ * Vuelve transparente lo que sea claro Y esté conectado con el borde del
+ * lienzo. Todo lo demás —incluidos los blancos internos, como los ojos— queda
+ * intacto. `pixeles` es un RGBA de 4 bytes por píxel; devuelve cuántos cambió.
+ */
+function recortarFondoClaro(pixeles, ancho, alto, tolerancia) {
+  const minimo = 255 - tolerancia;
+  const total = ancho * alto;
+  const visto = new Uint8Array(total);
+  const pila = new Int32Array(total);
+  let tope = 0;
+  let cambiados = 0;
+
+  const esFondo = (indice) => {
+    const p = indice * 4;
+    return (
+      pixeles[p] >= minimo &&
+      pixeles[p + 1] >= minimo &&
+      pixeles[p + 2] >= minimo &&
+      pixeles[p + 3] > 0
+    );
+  };
+
+  // `visto` se marca al empujar: cada píxel entra a la pila una sola vez, así
+  // que la pila nunca desborda.
+  const empujar = (indice) => {
+    if (indice < 0 || indice >= total || visto[indice]) return;
+    visto[indice] = 1;
+    if (esFondo(indice)) pila[tope++] = indice;
+  };
+
+  for (let x = 0; x < ancho; x += 1) {
+    empujar(x);
+    empujar((alto - 1) * ancho + x);
+  }
+  for (let y = 0; y < alto; y += 1) {
+    empujar(y * ancho);
+    empujar(y * ancho + ancho - 1);
+  }
+
+  while (tope > 0) {
+    const indice = pila[--tope];
+    pixeles[indice * 4 + 3] = 0;
+    cambiados += 1;
+
+    const x = indice % ancho;
+    if (x > 0) empujar(indice - 1);
+    if (x < ancho - 1) empujar(indice + 1);
+    empujar(indice - ancho);
+    empujar(indice + ancho);
+  }
+
+  return cambiados;
 }
 
 /* ============================================================

@@ -5,10 +5,11 @@ sin build, sin package manager, sin tests.
 
 ## Estado
 
-Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos).
-Del cuerpo se leen nariz, ojos, orejas, hombros, codos, muñecas y caderas; de
-las manos, los 21 puntos de cada una. **No hay interacciones, ni gestos, ni
-animación**: el escenario sigue estático.
+Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
+gestos (mano abierta / puño) + planta que crece y florece + paisaje animado por
+viento + personaje que camina en el fondo y se entristece. Del cuerpo se leen
+nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
+puntos de cada una.
 
 Estados de la cámara en `sketch.js`, reflejados en `data-estado` del contenedor:
 `iniciando` → `lista` → o `error`. Ojo: `createCapture` **solo llama al callback
@@ -41,19 +42,93 @@ otro servidor estático (Live Server de VS Code también sirve).
 |---|---|
 | `index.html` | documento único: contenedor principal, espacio de cámara, espacio de lienzo y carga de librerías |
 | `style.css` | todos los estilos de la interfaz |
-| `sketch.js` | `setup()` / `draw()` de p5.js en modo global, cámara y Body Pose |
+| `sketch.js` | `setup()` / `draw()` de p5.js en modo global, escenario y viento, cámara, Body Pose, Hand Pose y gestos |
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
 | `planta.js` | crecimiento de la planta con el gesto de puño, en su propia capa |
+| `personaje.png` | sprite del personaje que camina en el fondo (**asset obligatorio**: sin él no aparece) |
 
-Cinco archivos. Si aparece un módulo nuevo, registrarlo en `index.html` en el
-orden correcto y documentarlo acá.
+Cinco archivos de código más el sprite. Si aparece un módulo nuevo, registrarlo
+en `index.html` en el orden correcto y documentarlo acá.
+
+## Escenario y viento (`sketch.js`)
+
+El paisaje tiene ~1500 trazos, así que no se redibuja por frame. La escena se
+parte en dos capas:
+
+| Capa | Qué tiene | Cuándo se dibuja |
+|---|---|---|
+| Fondo congelado (`fondoEstatico`) | cielo con gradiente, bruma, tres franjas de suelo, chimeneas lejanas, piedras y ramas caídas | una vez en `construirEscenario()`, y otra vez al redimensionar |
+| Capa viva | árboles (sprites), personaje, humo, rachas, polvo y pasto | cada frame en `dibujarEscenario()` |
+
+- **Un solo viento manda**: `actualizarViento()` calcula `fuerzaViento` (0..1) y
+  `direccionViento` con dos octavas de `noise`, una lenta (la ráfaga) y otra
+  rápida (el pulso). Todo lo que se mueve lee esas dos variables, así que no hay
+  relojes paralelos que se puedan desincronizar.
+- La fuerza entra rápido (`ataque`) y sale lento (`relajo`), con amortiguación
+  exponencial `1 - exp(-k·dt)`: el movimiento no depende del framerate.
+- **Árboles**: cada uno se hornea en su propio `p5.Graphics` con el pie en
+  `(0,0)`. Por frame se dibuja con `translate` + `rotate` + `image`, un giro que
+  pivota en la base y cuesta una sola llamada por árbol. `balanceo` escala con la
+  profundidad: el árbol cercano recorre más píxeles en la copa que el lejano.
+  `VIENTO.velocidadVaiven` es el ritmo del vaivén; pasado ~2.5 se lee como
+  vibración y no como viento.
+- **Pasto**: posiciones y forma de cada brizna se sortean una vez en
+  `crearMatujos()`. Cada brizna conserva su largo y gira sobre su base, así que
+  al doblarse la punta baja. El ángulo se acota en `MATUJOS.anguloMaximo` (~77°):
+  pasado 90° la punta se clavaría en la tierra.
+- **Humo**: dos chimeneas lejanas viven en el fondo congelado y su penacho es
+  capa viva. Una bocanada es un círculo que sube, se abre con el viento, crece y
+  se desvanece; al llegar arriba se recicla abajo. `FABRICA.humoAlfa` (18) es el
+  número que lo mantiene leve: si se sube, deja de ser fondo y pasa a ser niebla.
+- **Polvo y rachas** se reciclan al salir por un borde: no se crean ni se
+  destruyen objetos por frame.
+- **Al redimensionar** no se redibuja de inmediato: `windowResized()` marca
+  `escenaDesactualizada` y `draw()` reconstruye una sola vez. Sin eso, arrastrar
+  la ventana reconstruiría el fondo y los 13 sprites en cada evento.
+- `SEMILLA` se vuelve a fijar al construir: la composición es idéntica en cada
+  sesión y en cada resize.
+
+## Personaje (`sketch.js` + `personaje.png`)
+
+- Vive en `sketch.js`, no en una capa propia: tiene que quedar **entre** los
+  árboles del plano medio y los cercanos. Por eso `dibujarArbolesViento(t, plano)`
+  se llama dos veces con el personaje en el medio; cada árbol lleva su `plano`
+  (0 lejos, 1 medio, 2 cerca).
+- `loadImage` en p5 2.x es **async**: devuelve una promesa, no la imagen, y
+  `setup()` es sincrónico a propósito. Se carga con callbacks; si el archivo
+  falta, el paisaje sigue andando y solo se pierde el personaje (error en
+  consola con prefijo `[personaje]`).
+- **El fondo claro del sprite se recorta al cargar** (`recortarFondoClaro`):
+  inunda desde los bordes y borra solo lo claro CONECTADO al borde. Un umbral
+  global borraría también los ojos blancos del personaje. `PERSONAJE.toleranciaFondo`
+  en 0 desactiva el recorte (útil si el PNG ya viene transparente).
+- Es un sprite único: no hay cuadros. El caminar es un vaivén + un rebote por
+  paso, y la tristeza es un cabeceo (`inclinacionTriste`) más un `scaleY`
+  (`hundimiento`), todo suavizado con `1 - exp(-k·dt)` para que no haya saltos
+  entre estados.
+- Ciclo: `caminando` → `mirando` (frena antes del árbol más alto del plano medio)
+  → `triste` (cabecea y larga una lágrima cada `cadaLagrima` s) → `caminando` →
+  sale por la derecha y reingresa por la izquierda.
+- `miradaHecha` es obligatorio: sin esa bandera, al retomar la caminata ya está
+  parado sobre la marca de parada y volvería a frenar en el mismo árbol para
+  siempre.
+- La base se apoya en `bordeDeSuelo(x, CAPAS_SUELO[1])`: sigue el relieve y no
+  flota en línea recta.
+- Decidir la escala acá: `PERSONAJE.altura` (fracción del alto del lienzo) y
+  `PERSONAJE.velocidad` (fracción del alto por segundo).
+- `PERSONAJE.ojo` (fracciones 0..1 de la imagen) ubica la lágrima. Si se recorta
+  o se cambia el sprite, hay que moverlo.
+- **El sprite tiene que estar recortado al contenido**, con los pies tocando el
+  borde inferior: la imagen se ancla por su borde inferior contra el suelo, así
+  que cualquier margen transparente abajo lo hace flotar. El `personaje.png`
+  actual está recortado (758×1271, con alfa).
 
 ## Modo depuración (`debug-pose.js`)
 
 - Es una capa **independiente**: no toca el escenario, ni `draw()`, ni la
   detección. Solo lee `obtenerPoseBusto()` / `obtenerEstadoPose()`.
-- Corre en **su propio `requestAnimationFrame`**: el escenario usa `noLoop()`,
-  así que no se puede colgar de `draw()`.
+- Corre en **su propio `requestAnimationFrame`**: es una capa independiente y no
+  depende del `draw()` de p5.
 - Dibuja sobre `#pose-overlay`, un canvas que ocupa exactamente el mismo
   rectángulo que el `<video>`. Cada punto pasa por `mapearPuntoCamara()`, por eso
   el esqueleto coincide con el cuerpo espejado y no queda corrido.
@@ -78,9 +153,12 @@ orden correcto y documentarlo acá.
 - El canvas se crea en `setup()` y se ancla con `canvas.parent(#lienzo-contenedor)`.
   No escribir `<canvas>` a mano en el HTML.
 - `pixelDensity(1)`: sin esto, un monitor de alta densidad cuadruplica el costo.
-- `noLoop()` está activo porque el placeholder es estático. Al empezar la
-  animación hay que quitarlo (y el `redraw()` de `windowResized` deja de hacer falta).
-- Todos los números y colores visibles viven en `:root` de `style.css`.
+- `draw()` corre a 60 fps (sin `noLoop()`), pero **nada caro se dibuja por
+  frame**: el fondo vive en un `p5.Graphics` y los árboles en sprites. Si se
+  agrega algo animado, tiene que ser liviano o cachearse igual.
+- Todos los números y colores visibles viven en `:root` de `style.css`; los del
+  paisaje, en `PALETA`, `VIENTO`, `MATUJOS`, `POLVO_AIRE`, `RACHAS` y `FABRICA`
+  de `sketch.js`.
 
 ## Gotchas a respetar cuando se integre la cámara
 

@@ -121,7 +121,7 @@ const DEPURACION_MANOS = true;
     requestAnimationFrame(bucle);
   }
 
-  /** Bucle propio: el escenario usa noLoop(), así que no podemos colgarnos de draw(). */
+  /** Bucle propio: es una capa independiente, así no depende del draw() de p5. */
   function bucle() {
     requestAnimationFrame(bucle);
 
