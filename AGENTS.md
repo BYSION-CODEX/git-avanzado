@@ -63,7 +63,7 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `orquidea-*.png` | las **20 piezas** del montaje de `orquidea` (tallo, hojas, capullos, pétalos, corazón, pistilo, ramas y flor azul). Todas con alfa; ver «Orquídea» |
 | `tres-flores-*.png` | las **14 piezas** del montaje de `tres_flores` (tallo, 5 hojas, 2 ramas y 6 grupos de pétalos: flor principal, izquierda y derecha). Todas con alfa; ver «Planta de tres flores» |
 
-Cinco archivos de código y 41 imágenes en disco: las 20 piezas de la orquídea,
+Cinco archivos de código y 40 imágenes en disco: las 20 piezas de la orquídea,
 las 14 de la planta de tres flores y los PNG de las plantas retiradas que ya no
 se cargan. Si aparece un módulo nuevo, registrarlo en `index.html` en el orden
 correcto y documentarlo acá.
