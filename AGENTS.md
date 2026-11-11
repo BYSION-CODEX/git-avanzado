@@ -9,14 +9,14 @@ Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
 gestos (mano abierta / puño) + **una única planta interactiva: la orquídea**
 (centrada, montada con 20 piezas) + paisaje
 animado por viento + árboles que reverdecen con ese crecimiento mientras haya
-manos en cuadro + personaje que camina en el fondo, se entristece y celebra con
-las manos arriba cuando la orquídea crece. Del cuerpo se leen
-nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
+manos en cuadro. El personaje que caminaba en el fondo se retiró. Del cuerpo se
+leen nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
 puntos de cada una.
 
 > Las cinco entradas anteriores del catálogo (`arbol_colorido`, `planta_azul`,
 > `planta_central`, `planta_morada`, `planta_naranja`) se retiraron de
 > `PLANTAS`. Sus PNG siguen en la carpeta pero ya no se cargan ni se dibujan.
+> El `personaje.png` tampoco se carga.
 
 Estados de la cámara en `sketch.js`, reflejados en `data-estado` del contenedor:
 `iniciando` → `lista` → o `error`. Ojo: `createCapture` **solo llama al callback
@@ -52,8 +52,8 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `sketch.js` | `setup()` / `draw()` de p5.js en modo global, escenario y viento, cámara, Body Pose, Hand Pose y gestos |
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
 | `planta.js` | catálogo de plantas: crecimiento, floración, sacudida e inclinación, en su propia capa |
-| `personaje.png` | sprite del personaje que camina en el fondo (**asset obligatorio**: sin él no aparece) |
-| `personaje-feliz.png` | pose feliz del personaje, con las manos arriba (opcional: sin ella el estado feliz usa `personaje.png`) |
+| `personaje.png` | sprite del ex personaje que caminaba en el fondo. **Ya no se carga** |
+| `personaje-feliz.png` | pose feliz del ex personaje. **Ya no se carga** |
 | `flor.png` | ilustración de la ex planta central. **Fuera del catálogo**: ya no se carga |
 | `planta-morada.png` | ilustración de la ex `planta_morada`. **Fuera del catálogo**: ya no se carga |
 | `planta-naranja.png` | ilustración de la ex `planta_naranja`. **Fuera del catálogo**: ya no se carga |
@@ -161,7 +161,12 @@ parte en dos capas:
   de llegar al último nivel, y por eso el follaje se cuelga de *todos* los nudos
   y no de un nivel fijo.
 
-## Personaje (`sketch.js` + `personaje.png` + `personaje-feliz.png`)
+## Personaje (`sketch.js` + `personaje.png`) — retirado de la escena
+
+> **Ya no se dibuja.** Se quitaron las llamadas a `cargarPersonaje()`,
+> `actualizarPersonaje()` y `dibujarPersonaje()`. El código y el PNG quedan
+> como referencia por si se quiere recuperar, pero no se cargan ni consumen
+> frames. La descripción de abajo documenta ese código legacy.
 
 - Vive en `sketch.js`, no en una capa propia: tiene que quedar **entre** los
   árboles del plano medio y los cercanos. Por eso `dibujarArbolesViento(t, plano)`
@@ -446,6 +451,19 @@ parte en dos capas:
   cierra. Al desplegarse aparecen las dos ramas, la flor azul, el capullo
   lateral y la hoja pequeña (a la **izquierda** de la base y chica, 0.16 de
   `full`).
+- **Sin mano no hay planta**: `visibilidad` (0..1) se desvanece cuando no hay
+  ninguna mano en cuadro. El capullo aparece con el puño (o cuando la planta ya
+  creció); una mano abierta sin puño previo no inventa una planta. Al volver a
+  detectar una mano, la orquídea reaparece con el estado que tenía.
+- **La inclinación sigue la mano**: el resorte amortiguado mueve todo el tallo
+  (la base queda fija) y la flor acompaña el ángulo. Está afinado blando
+  (`rigidezSeguir` 24, `amortiguacionSeguir` 8.5) para que fluya sin tirones ni
+  rebote.
+- **Destellos**: si las puntas de los dedos se agitan respecto de la muñeca
+  (`intensidadDedos`), la flor emite brillitos de polen alrededor de su centro
+  (`centroDeLaFlor()`). No depende de la sacudida de la muñeca: ese gesto emite
+  el polen del tallo. Los destellos se dibujan con halo + núcleo titilante y
+  máximo 90.
 - **Pétalos individuales**: los cinco pétalos de la flor principal están en
   `ORQUIDEA.petalos`, cada uno con su retardo, su giro de cierre y su fase de
   vaivén. Se dibujan anclados en su unión, así la flor se abre desde el centro
@@ -464,13 +482,15 @@ parte en dos capas:
   estado de una carga limpia. Recargar la página también reinicia, porque no se
   persiste nada.
 - **Comprobación sin cámara**: `plantaDebug.orquidea()` devuelve
-  `{ cargada, piezas, crecimiento, llegoArriba, apertura, ramas }` y
-  `plantaDebug.paso(dt)` simula frames. Con `window.obtenerManos` intervenido se
-  verificó: puño abajo → 10% y capullo; puño en la punta → `apertura 0` con
+  `{ cargada, piezas, crecimiento, llegoArriba, apertura, ramas, visibilidad }`
+  y `plantaDebug.paso(dt)` simula frames. Con `window.obtenerManos` intervenido se
+  verificó: sin mano → `visibilidad 0` y paisaje vacío; mano abierta sin puño →
+  nada; puño → aparece la planta; puño en la punta → `apertura 0` con
   `ramas 0`; mano abierta en la punta → `apertura 1` y `ramas 1`; cerrar la
-  mano → `apertura 0` y `ramas 0`; bajar el puño → capullo; abrir antes de
-  subir → todo en 0; `reiniciar()` → todo en 0. `plantas()` devuelve solo la
-  orquídea.
+  mano → `apertura 0` y `ramas 0`; bajar el puño → capullo; dedos agitados →
+  `destellos 0.72` y 59 partículas; `reiniciar()` → todo en 0. También se
+  verificó que la inclinación llega a ±0.3 rad siguiendo la mano.
+  `plantas()` devuelve solo la orquídea.
 
 ### Árbol colorido: mecanismo retirado del catálogo
 
@@ -525,13 +545,20 @@ parte en dos capas:
 - El temblor son **dos armónicos** (`FRECUENCIA_TEMBLOR` 0.019 rad/ms ≈ 3 Hz,
   más un segundo a 1.73× con 35 % de amplitud): se lee como un tallo que vibra,
   no como un metrónomo. `AMPLITUD_TEMBLOR` (0.06 rad) es el pico a intensidad 1.
-- Partículas: máximo `MAX_PARTICULAS` (140), emisión `EMISION_MAXIMA` por segundo
+- Partículas: máximo `MAX_PARTICULAS` (160), emisión `EMISION_MAXIMA` por segundo
   × intensidad. Cada una con tamaño, velocidad y vida aleatorios; frenan por
   roce y flotan hacia arriba. El alfa cae con la vida restante, así desaparecen
   gradualmente.
+- **Destellos por dedos**: además del polen de la sacudida, si las puntas se
+  agitan respecto de la muñeca (`VELOCIDAD_MINIMA_DEDOS` 0.55) la flor emite
+  brillitos (`MAX_DESTELLOS` 90, `EMISION_DESTELLOS` 55/s). Se miden las cinco
+  puntas relativas a la muñeca, así trasladar la mano entera no dispara nada.
+  Nacen alrededor del centro de la flor (`centroDeLaFlor()`), con halo suave y
+  núcleo que titila; son partículas con `destello: true`.
 - Verificado en Node: deriva lenta → 0 partículas; barrido en una dirección → 0;
-  sacudida real → intensidad 1.0 y 86 partículas; al parar → 0 en ~5 s y la
-  altura de la planta intacta.
+  sacudida real → intensidad 1.0 y 86 partículas; dedos agitados → 0.72 de
+  intensidad y 59 destellos; al parar → 0 en ~5 s y la altura de la planta
+  intacta.
 
 ### Inclinación
 
@@ -543,13 +570,13 @@ parte en dos capas:
   inclina a la derecha **tal como la ve el usuario**: la `x` está espejada para
   compensar que la cámara se muestra en espejo.
 - Zona muerta `ANGULO_MUERTO` (0.1 rad ≈ 6°) y saturación en `ANGULO_MAXIMO`
-  (0.6 rad ≈ 34°), que corresponde a `INCLINACION_MAXIMA` (0.28 rad ≈ 16°) de
+  (0.6 rad ≈ 34°), que corresponde a `INCLINACION_MAXIMA` (0.3 rad ≈ 17°) de
   la planta.
-- **Resorte amortiguado, no lerp**: `RESORTE_INCLINACION` da inercia y un
-  asentamiento corto. Seguir la mano es más rígido (`rigidezSeguir` 60) que
-  volver al centro (`rigidezVolver` 16), así el regreso sigue siendo lento. Se
-  integra en subpasos de 1/120 s para que un `dt` grande no lo desestabilice.
-  Sin manos también vuelve a 0.
+- **Resorte amortiguado, no lerp**: `RESORTE_INCLINACION` está afinado para la
+  orquídea alta: `rigidezSeguir` 24 y `amortiguacionSeguir` 8.5 (sigue la mano
+  sin tirones), `rigidezVolver` 12 y `amortiguacionVolver` 7 (vuelve al centro
+  sin rebotar). Se integra en subpasos de 1/120 s para que un `dt` grande no lo
+  desestabilice. Sin manos también vuelve a 0.
 - **Vaivén ambiental**: `balanceoDelAire()` suma un mecido lento que lee
   `fuerzaViento` y `direccionViento` de `sketch.js`, el mismo viento de los
   árboles. Es solo presentación: no toca `inclinacion` ni la lógica del gesto.

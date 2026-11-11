@@ -45,8 +45,7 @@ function setup() {
   // El fondo se hornea una sola vez acá y solo se reconstruye al redimensionar.
   construirEscenario();
 
-  // La imagen del personaje llega después (loadImage es async en p5 2.x).
-  cargarPersonaje();
+  // El personaje que caminaba en el fondo se retiró de la escena.
 
   // La cámara se pide al final: si falla, el escenario ya está funcionando.
   iniciarCamara();
@@ -66,7 +65,6 @@ function draw() {
 
   actualizarViento(dt);
   actualizarVida(dt);
-  actualizarPersonaje(dt);
   dibujarEscenario(relojEscena, dt);
 }
 
@@ -385,9 +383,6 @@ function construirEscenario() {
   // planta.js: acá solo se le presta un contexto del tamaño del lienzo.
   capaArbolPaisaje = createGraphics(width, height);
   capaArbolPaisaje.pixelDensity(1);
-
-  // Al final: necesita los árboles ya creados para elegir a cuál mirar.
-  reiniciarPersonaje();
 }
 
 /** Suelta los buffers anteriores: sin esto cada resize deja canvas vivos. */
@@ -439,7 +434,6 @@ function dibujarEscenario(t, dt) {
   // y detrás de los medios, del personaje y de las plantas de `planta-overlay`.
   dibujarArbolPaisaje();
   dibujarArbolesViento(t, 1);
-  dibujarPersonaje();
   dibujarArbolesViento(t, 2);
   actualizarDibujarPolvo(t, dt);
   dibujarMatujosViento(t);

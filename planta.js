@@ -191,9 +191,24 @@
   const AMPLITUD_TEMBLOR = 0.06;
   const FRECUENCIA_TEMBLOR = 0.019; // rad/ms ≈ 3 Hz
 
-  const MAX_PARTICULAS = 140;
+  const MAX_PARTICULAS = 160;
   const EMISION_MAXIMA = 70; // partículas por segundo a intensidad 1
   const COLOR_POLEN = '#e8d9a8';
+
+  /* ---------- Destellos por movimiento de dedos ---------- */
+
+  /**
+   * Los dedos se miden RELATIVOS a la muñeca: así una mano que se traslada
+   * entera no dispara destellos, pero unos dedos que se agitan sí. La
+   * velocidad se promedia sobre las cinco puntas.
+   */
+  const DEDOS_PUNTA = [4, 8, 12, 16, 20];
+  const VELOCIDAD_MINIMA_DEDOS = 0.55; // unidades normalizadas por segundo
+  const ATAQUE_DEDOS = 12;
+  const RELAJO_DEDOS = 4;
+  const MAX_DESTELLOS = 90;
+  const EMISION_DESTELLOS = 55; // destellos por segundo a intensidad 1
+  const COLOR_DESTELLO = '#fff1bf';
 
   /* ---------- Inclinación ---------- */
 
@@ -203,18 +218,19 @@
   /** Ángulo de mano que corresponde a la inclinación máxima (~34°). */
   const ANGULO_MAXIMO = 0.6;
 
-  /** Inclinación máxima de la planta en radianes (~16°). */
-  const INCLINACION_MAXIMA = 0.28;
+  /** Inclinación máxima de la planta en radianes (~17°). */
+  const INCLINACION_MAXIMA = 0.3;
 
   /**
    * La inclinación es un resorte amortiguado, no un lerp: la flor tiene inercia,
-   * acompaña la mano y se asienta sola con un vaivén corto. Seguir la mano es
-   * más rígido que volver al centro, igual que antes.
+   * acompaña la mano y se asienta sola con un vaivén corto. Para una orquídea
+   * alta conviene un resorte más blando que el original: sigue la mano sin
+   * tirones y vuelve al centro sin rebotar.
    */
   const RESORTE_INCLINACION = {
-    rigidezSeguir: 60,
-    amortiguacionSeguir: 10,
-    rigidezVolver: 16,
+    rigidezSeguir: 24,
+    amortiguacionSeguir: 8.5,
+    rigidezVolver: 12,
     amortiguacionVolver: 7,
   };
 
@@ -247,12 +263,14 @@
   let ultimoTexto = 0;
 
   let intensidadSacudida = 0; // 0..1, ya suavizada
+  let intensidadDedos = 0; // 0..1, agitación de las puntas respecto de la muñeca
   let congelarAltura = false; // true cuando la mano va rápido o está sacudiendo
   let inclinacion = 0; // radianes, ya suavizada
   let velocidadInclinacion = 0; // rad/s, para el resorte
   let objetivoInclinacion = 0;
   let relojDebug = 0;
   const estadosSacudida = {}; // un estado por mano (clave: handedness)
+  const estadosDedos = {}; // un estado por mano (clave: handedness)
 
   /** Una instancia por entrada del catálogo: imagen y animación propias. */
   const plantas = PLANTAS.map(crearPlanta);
@@ -277,9 +295,10 @@
       crecimiento: 0, // valor mostrado (suavizado) 0..1
       florecimiento: 0, // revelado de la corola 0..1
       // Secuencia propia de la orquídea. En las demás plantas queda en 0.
-      orquidea: { llegoArriba: false, apertura: 0, ramas: 0 },
+      orquidea: { llegoArriba: false, apertura: 0, ramas: 0, visibilidad: 0 },
       particulas: [],
       acumuladorEmision: 0,
+      acumuladorDestellos: 0,
     };
   }
 
@@ -452,7 +471,7 @@
     }
     for (const planta of plantas) {
       if (planta.def.paisaje) continue;
-      dibujarParticulas(planta);
+      dibujarParticulas(planta, ahora);
     }
 
     pintarPorcentaje(ahora);
@@ -463,11 +482,12 @@
     // La sacudida va primero: el crecimiento consulta su intensidad del frame
     // actual para no reaccionar al movimiento vertical de la propia sacudida.
     actualizarSacudida(ahora, dt);
+    actualizarDedos(ahora, dt);
     actualizarCrecimiento(dt);
     actualizarFlorecimiento(dt);
     actualizarOrquidea(dt);
     actualizarInclinacion(dt);
-    actualizarParticulas(dt);
+    actualizarParticulas(dt, ahora);
   }
 
   /** Mismo tamaño exacto que el canvas de p5, con densidad de pantalla. */
@@ -635,10 +655,24 @@
     if (!planta) return;
 
     const estado = planta.orquidea;
+    const manos = typeof obtenerManos === 'function' ? obtenerManos() : [];
+    const hayMano = manos.length > 0;
+    const manoAbierta = manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
+    const hayPuno = manos.some((mano) => mano.gesto && mano.gesto.estado === 'cerrado');
     const enLaPunta = planta.crecimiento >= 0.985;
-    const manoAbierta = hayManoAbierta();
 
     estado.llegoArriba = enLaPunta;
+
+    // Sin mano en cuadro el paisaje queda vacío. El capullo aparece con el
+    // puño (o cuando la planta ya creció); una mano abierta sin puño previo no
+    // inventa una planta.
+    const debeVerse = hayMano && (hayPuno || planta.crecimiento > 0.001 || estado.apertura > 0.001);
+    const objetivoVisibilidad = debeVerse ? 1 : 0;
+    const factorVisibilidad = 1 - Math.exp(-(objetivoVisibilidad ? 9 : 7) * dt);
+    estado.visibilidad += (objetivoVisibilidad - estado.visibilidad) * factorVisibilidad;
+    if (Math.abs(objetivoVisibilidad - estado.visibilidad) < 0.002) {
+      estado.visibilidad = objetivoVisibilidad;
+    }
 
     // Abrir es más lento que cerrar: la flor se despliega pétalo por pétalo,
     // pero cuando la mano se va o el tallo baja, se recoge enseguida.
@@ -887,13 +921,98 @@
     return estado.cambios.length >= CAMBIOS_NECESARIOS;
   }
 
-  /* ---------- Partículas ---------- */
+  /* ---------- Dedos: agitación para los destellos ---------- */
 
-  function actualizarParticulas(dt) {
-    for (const planta of plantas) actualizarParticulasDe(planta, dt);
+  /**
+   * Velocidad de las puntas RELATIVA a la muñeca. Restar la muñeca es la clave:
+   * trasladar la mano entera no agita los dedos, pero moverlos sí. Se promedian
+   * las cinco puntas y se suaviza con ataque rápido y relajo lento, igual que
+   * la sacudida, para que los destellos no parpadeen.
+   */
+  function actualizarDedos(ahora, dt) {
+    let maxima = 0;
+    const vistas = new Set();
+
+    if (typeof obtenerManos === 'function') {
+      for (const mano of obtenerManos()) {
+        const puntos = mano.keypoints;
+        if (!puntos || !puntos[0]) continue;
+
+        const clave = mano.handedness || 'Mano';
+        vistas.add(clave);
+
+        if (!estadosDedos[clave]) {
+          estadosDedos[clave] = { puntos: null, t: ahora, intensidad: 0 };
+        }
+
+        const estado = estadosDedos[clave];
+        const muneca = puntos[0];
+        const relativos = DEDOS_PUNTA.map((indice) => {
+          const punta = puntos[indice];
+          return punta ? { x: punta.x - muneca.x, y: punta.y - muneca.y } : null;
+        });
+
+        let velocidad = 0;
+        if (estado.puntos) {
+          const segundos = Math.max((ahora - estado.t) / 1000, 0.001);
+          let suma = 0;
+          let cuenta = 0;
+
+          for (let i = 0; i < relativos.length; i += 1) {
+            const actual = relativos[i];
+            const previo = estado.puntos[i];
+            if (!actual || !previo) continue;
+            suma += Math.hypot(actual.x - previo.x, actual.y - previo.y);
+            cuenta += 1;
+          }
+
+          if (cuenta > 0) velocidad = suma / cuenta / segundos;
+        }
+
+        estado.puntos = relativos;
+        estado.t = ahora;
+
+        const agitado = velocidad >= VELOCIDAD_MINIMA_DEDOS;
+        const factor = 1 - Math.exp(-(agitado ? ATAQUE_DEDOS : RELAJO_DEDOS) * dt);
+        estado.intensidad += ((agitado ? 1 : 0) - estado.intensidad) * factor;
+        maxima = Math.max(maxima, estado.intensidad);
+      }
+    }
+
+    // Manos que salieron: la intensidad se apaga sola.
+    for (const clave of Object.keys(estadosDedos)) {
+      if (vistas.has(clave)) continue;
+
+      const estado = estadosDedos[clave];
+      estado.intensidad += (0 - estado.intensidad) * (1 - Math.exp(-RELAJO_DEDOS * dt));
+
+      if (estado.intensidad < 0.01) {
+        delete estadosDedos[clave];
+      } else {
+        maxima = Math.max(maxima, estado.intensidad);
+      }
+    }
+
+    intensidadDedos = maxima;
   }
 
-  function actualizarParticulasDe(planta, dt) {
+  /* ---------- Partículas ---------- */
+
+  function actualizarParticulas(dt, ahora) {
+    for (const planta of plantas) actualizarParticulasDe(planta, dt, ahora);
+  }
+
+  function actualizarParticulasDe(planta, dt, ahora) {
+    const visibilidad = visibilidadDe(planta);
+
+    // Sin mano no hay planta: tampoco partículas dando vueltas.
+    if (visibilidad <= 0.01) {
+      planta.particulas = [];
+      planta.acumuladorEmision = 0;
+      planta.acumuladorDestellos = 0;
+      return;
+    }
+
     if (intensidadSacudida > 0.12 && planta.crecimiento > 0.05) {
       planta.acumuladorEmision += EMISION_MAXIMA * intensidadSacudida * dt;
 
@@ -903,6 +1022,27 @@
       }
     } else {
       planta.acumuladorEmision = 0;
+    }
+
+    // Destellos: los dispara la agitación de los dedos, no la muñeca.
+    if (intensidadDedos > 0.12 && planta.crecimiento > 0.05) {
+      planta.acumuladorDestellos += EMISION_DESTELLOS * intensidadDedos * dt;
+      let destellos = 0;
+      for (const particula of planta.particulas) {
+        if (particula.destello) destellos += 1;
+      }
+
+      while (
+        planta.acumuladorDestellos >= 1 &&
+        destellos < MAX_DESTELLOS &&
+        planta.particulas.length < MAX_PARTICULAS
+      ) {
+        emitirDestello(planta, ahora);
+        planta.acumuladorDestellos -= 1;
+        destellos += 1;
+      }
+    } else {
+      planta.acumuladorDestellos = 0;
     }
 
     for (const particula of planta.particulas) {
@@ -917,6 +1057,11 @@
     }
 
     planta.particulas = planta.particulas.filter((particula) => particula.vida > 0);
+  }
+
+  /** 0..1: la orquídea se oculta cuando no hay ninguna mano en cuadro. */
+  function visibilidadDe(planta) {
+    return planta.def.personalizado === 'orquidea' ? planta.orquidea.visibilidad : 1;
   }
 
   function emitirParticula(planta) {
@@ -948,17 +1093,95 @@
     });
   }
 
-  function dibujarParticulas(planta, contexto = ctx) {
+  /**
+   * Posición en pantalla del centro de la flor principal, aplicando el mismo
+   * balanceo que el dibujo. Se usa para que los destellos nazcan en la flor y
+   * no en el tallo.
+   */
+  function centroDeLaFlor(planta, ahora) {
+    if (!anchoCSS || !altoCSS) return null;
+
+    const full = altoCSS * planta.def.altura;
+    const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
+    const largo =
+      (ORQUIDEA.talloMinimo + (ORQUIDEA.talloMaximo - ORQUIDEA.talloMinimo) * planta.crecimiento) *
+      full;
+    const tallo =
+      planta.partes && planta.partes.tallo
+        ? planta.partes.tallo.naturalWidth / planta.partes.tallo.naturalHeight
+        : 0.168;
+    const anchoTallo = largo * tallo * ORQUIDEA.talloAngosto;
+    const localX = (ORQUIDEA.talloPunta - ORQUIDEA.talloBase) * anchoTallo;
+    const localY = -largo - ORQUIDEA.florSobrePunta * full;
+
+    const angulo = inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    const cos = Math.cos(angulo);
+    const sin = Math.sin(angulo);
+
+    return {
+      x: base.x + localX * cos - localY * sin,
+      y: base.y + localX * sin + localY * cos,
+      full,
+    };
+  }
+
+  /** Un brillito de polen que nace alrededor de la flor y flota hacia arriba. */
+  function emitirDestello(planta, ahora) {
+    const centro = centroDeLaFlor(planta, ahora);
+    if (!centro) return;
+
+    const radio = centro.full * 0.075;
+    const angulo = Math.random() * Math.PI * 2;
+    const distancia = Math.sqrt(Math.random()) * radio;
+    const vida = 0.7 + Math.random() * 0.9;
+    const escala = altoCSS * 0.1;
+
+    planta.particulas.push({
+      x: centro.x + Math.cos(angulo) * distancia,
+      y: centro.y + Math.sin(angulo) * distancia,
+      vx: (Math.random() - 0.5) * escala * 0.35,
+      vy: -escala * (0.08 + Math.random() * 0.18),
+      vida,
+      vidaMax: vida,
+      tamano: altoCSS * (0.0013 + Math.random() * 0.0018),
+      destello: true,
+      color: COLOR_DESTELLO,
+      fase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function dibujarParticulas(planta, ahora, contexto = ctx) {
     if (planta.particulas.length === 0) return;
 
+    const visibilidad = visibilidadDe(planta);
+    if (visibilidad <= 0.01) return;
+
     const c = contexto || ctx;
-    c.fillStyle = COLOR_POLEN;
 
     for (const particula of planta.particulas) {
-      const alfa = Math.max(0, particula.vida / particula.vidaMax);
+      const alfa = Math.max(0, particula.vida / particula.vidaMax) * visibilidad;
       if (alfa <= 0.01) continue;
 
+      if (particula.destello) {
+        // Destello: halo suave + núcleo que titila. Sin shadowBlur para que
+        // siga siendo barato con decenas de partículas por frame.
+        const titileo = 0.55 + 0.45 * Math.sin(particula.vida * 26 + particula.fase);
+        c.fillStyle = particula.color;
+
+        c.globalAlpha = alfa * 0.3 * titileo;
+        c.beginPath();
+        c.arc(particula.x, particula.y, particula.tamano * 3.4, 0, Math.PI * 2);
+        c.fill();
+
+        c.globalAlpha = alfa * titileo;
+        c.beginPath();
+        c.arc(particula.x, particula.y, particula.tamano, 0, Math.PI * 2);
+        c.fill();
+        continue;
+      }
+
       c.globalAlpha = alfa;
+      c.fillStyle = COLOR_POLEN;
       c.beginPath();
       c.arc(particula.x, particula.y, particula.tamano, 0, Math.PI * 2);
       c.fill();
@@ -1175,7 +1398,14 @@
     const base = baseDeLaPlanta(planta.def, ancho, alto);
     const full = alto * planta.def.altura;
     const estado = planta.orquidea;
+
+    // Sin mano no hay planta: se desvanece entera (hojas, tallo y flor).
+    if (estado.visibilidad <= 0.002) return;
+
     const apertura = estado.apertura;
+
+    c.save();
+    c.globalAlpha *= estado.visibilidad;
 
     // ---- hojas de la base: fijas, no acompañan el balanceo del tallo ----
     const hojaIzq = ORQUIDEA.piezas.hojaBaseIzquierda;
@@ -1363,7 +1593,8 @@
       }
     }
 
-    c.restore();
+    c.restore(); // grupo del tallo
+    c.restore(); // visibilidad de la orquídea
   }
 
   /** Curva de suavizado corta, reutilizada por el montaje. */
@@ -1434,15 +1665,19 @@
     objetivoInclinacion = 0;
 
     for (const clave of Object.keys(estadosSacudida)) delete estadosSacudida[clave];
+    for (const clave of Object.keys(estadosDedos)) delete estadosDedos[clave];
+    intensidadDedos = 0;
 
     for (const planta of plantas) {
       planta.crecimiento = 0;
       planta.florecimiento = 0;
       planta.particulas = [];
       planta.acumuladorEmision = 0;
+      planta.acumuladorDestellos = 0;
       planta.orquidea.llegoArriba = false;
       planta.orquidea.apertura = 0;
       planta.orquidea.ramas = 0;
+      planta.orquidea.visibilidad = 0;
     }
   }
 
@@ -1455,6 +1690,7 @@
     objetivo: () => objetivo,
     florecimiento: () => principal.florecimiento,
     sacudida: () => intensidadSacudida,
+    destellos: () => intensidadDedos,
     inclinacion: () => inclinacion,
     particulas: () => principal.particulas.length,
     plantas: () =>
@@ -1490,6 +1726,7 @@
         llegoArriba: planta.orquidea.llegoArriba,
         apertura: planta.orquidea.apertura,
         ramas: planta.orquidea.ramas,
+        visibilidad: planta.orquidea.visibilidad,
       };
     },
     /**
@@ -1515,7 +1752,7 @@
       for (const planta of plantas) {
         if (!planta.def.paisaje) continue;
         dibujarPlanta(planta, ancho, alto, ahora, contexto);
-        dibujarParticulas(planta, contexto);
+        dibujarParticulas(planta, ahora, contexto);
         if (planta.lista && planta.crecimiento > 0.004) dibujado = true;
       }
 
