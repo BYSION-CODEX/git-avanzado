@@ -6,8 +6,9 @@ sin build, sin package manager, sin tests.
 ## Estado
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
-gestos (mano abierta / puño) + **una única planta interactiva: la orquídea**
-(centrada, montada con 20 piezas) + paisaje
+gestos (mano abierta / puño) + **dos plantas interactivas**: la orquídea
+(centrada, montada con 20 piezas) y la **planta de tres flores** (a la izquierda,
+montada con 14 piezas) + paisaje
 animado por viento + árboles que reverdecen con ese crecimiento mientras haya
 manos en cuadro. El personaje que caminaba en el fondo se retiró. Del cuerpo se
 leen nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
@@ -60,11 +61,12 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `planta-azul.png` | ilustración de la ex `planta_azul`. **Fuera del catálogo**: ya no se carga |
 | `arbol-colorido.png` | ilustración del ex `arbol_colorido`. **Fuera del catálogo**: ya no se carga |
 | `orquidea-*.png` | las **20 piezas** del montaje de `orquidea` (tallo, hojas, capullos, pétalos, corazón, pistilo, ramas y flor azul). Todas con alfa; ver «Orquídea» |
+| `tres-flores-*.png` | las **14 piezas** del montaje de `tres_flores` (tallo, 5 hojas, 2 ramas y 6 grupos de pétalos: flor principal, izquierda y derecha). Todas con alfa; ver «Planta de tres flores» |
 
-Cinco archivos de código y 27 imágenes en disco: el personaje con su pose feliz
-opcional, las 20 piezas de la orquídea y seis PNG de las plantas retiradas que
-ya no se cargan. Si aparece un módulo nuevo, registrarlo en `index.html` en el
-orden correcto y documentarlo acá.
+Cinco archivos de código y 41 imágenes en disco: las 20 piezas de la orquídea,
+las 14 de la planta de tres flores y los PNG de las plantas retiradas que ya no
+se cargan. Si aparece un módulo nuevo, registrarlo en `index.html` en el orden
+correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
@@ -355,10 +357,9 @@ parte en dos capas:
   objeto a la lista; no hay que tocar ninguna interacción.
 - **Profundidad = orden de la lista + capa de suelo**. La lista se dibuja de
   atrás hacia adelante (la primera queda debajo) y `capaSuelo` decide de qué
-  franja del terreno nace: `0` lejos, `1` medio, `2` cerca. La `planta_azul` va
-  primera y en la capa `1`, con `altura` 0.24 —un poco por encima de los
-  árboles de ese plano (0.16–0.23)— para que la flor se lea como planta y siga
-  claramente detrás de las tres del primer plano (0.36–0.42).
+  franja del terreno nace: `0` lejos, `1` medio, `2` cerca. La planta de tres
+  flores va primera y en la capa `2`; la orquídea va última, también en la capa
+  `2`, así la protagonista queda encima.
 - **Cada planta tiene su propio estado**: imagen, proporción, `crecimiento`,
   `florecimiento` y partículas. El objetivo lo calculan las manos una vez y cada
   planta lo alcanza con su suavizado, así no comparten la variable de dibujo.
@@ -367,7 +368,9 @@ parte en dos capas:
   `x`, `altura`, `capaSuelo`, `toleranciaFondo` y su `corola`, en la posición de
   la lista que le corresponde por profundidad; (3) nada más. No hace falta tocar
   gestos, `sketch.js`, `index.html` ni la cámara. El orden de la lista es el de
-  dibujo: la primera queda debajo.
+  dibujo: la primera queda debajo. Para una planta **de montaje** (varias piezas
+  animadas por separado), además hay que sumar su config y su función de dibujo,
+  como `ORQUIDEA` / `TRES_FLORES`, y desviarla con `personalizado`.
 - `planta-<color>.png` es la fuente única de cada ilustración: se dibuja tal
   cual, con sus colores, pétalos y proporciones. `planta.js` no redibuja nada;
   solo la escala, la inclina, la sacude y la revela. El PNG tiene que venir
@@ -378,9 +381,8 @@ parte en dos capas:
   (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la base
   queda clavada sobre el suelo mientras la planta crece hacia arriba.
 - `altura` (fracción del alto del lienzo al 100%) y `x` (fracción del ancho) son
-  de cada planta: la central va en `0.5` / `0.42`, la morada en `0.25` / `0.36`,
-  la naranja en `0.76` / `0.36` y la azul en `0.86` / `0.24`. Cada `faseViento`
-  distinta evita que se mezan al unísono.
+  de cada planta: la orquídea va en `0.5` / `0.44` y la planta de tres flores en
+  `0.22` / `0.40`. Cada `faseViento` distinta evita que se mezan al unísono.
 - La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
   no está lista esa planta no se dibuja; si falta el archivo, el resto de la
   experiencia sigue andando y solo se pierde esa planta.
@@ -393,9 +395,10 @@ parte en dos capas:
   En `0` se desactiva (`flor.png` ya trae alfa).
 - **Contrato con `sketch.js`**: `plantaDebug.crecimiento()` y
   `plantaDebug.florecimiento()` hablan de la planta principal (la que declara
-  `principal: true`, o la última del catálogo si ninguna lo hace). Hoy la única
-  entrada es la orquídea, así que su crecimiento alimenta el follaje y al
-  personaje; su `florecimiento` es la apertura real de la flor.
+  `principal: true`, o la última del catálogo si ninguna lo hace). La orquídea
+  está marcada `principal: true`, así que su crecimiento alimenta el follaje y
+  al personaje; su `florecimiento` es la apertura real de la flor. La planta de
+  tres flores comparte el mismo crecimiento, pero no publica ese contrato.
 - Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
   y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
 - Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
@@ -416,7 +419,7 @@ parte en dos capas:
 
 ### Orquídea: montaje de piezas y flor reversible
 
-- Es **la única entrada** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.44`,
+- Es **la entrada central** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.44`,
   `capaSuelo: 2`), centrada en la composición. No es una ilustración única:
   `personalizado: 'orquidea'` desvía el dibujo a `dibujarOrquidea()`. La
   interacción compartida —crecimiento, inclinación, sacudida, viento y
@@ -490,7 +493,57 @@ parte en dos capas:
   mano → `apertura 0` y `ramas 0`; bajar el puño → capullo; dedos agitados →
   `destellos 0.72` y 59 partículas; `reiniciar()` → todo en 0. También se
   verificó que la inclinación llega a ±0.3 rad siguiendo la mano.
-  `plantas()` devuelve solo la orquídea.
+  `plantas()` devuelve las dos entradas del catálogo.
+
+### Planta de tres flores: montaje lateral y secuencia de tres gestos
+
+- Es la segunda entrada del catálogo (`id: 'tres_flores'`, `x: 0.22`, `altura: 0.40`,
+  `capaSuelo: 2`). Va **primera en `PLANTAS`** (se dibuja debajo) y a la
+  izquierda de la pantalla, lejos de la orquídea. La orquídea conserva
+  `principal: true`, así el porcentaje y el follaje siguen leyendo su crecimiento.
+- **14 piezas** en `TRES_FLORES.piezas`, en fracciones de `full = alto * 0.40`.
+  Los nombres salieron de `Plantas_FINAL`; `flores_de_colores-09.png` se asignó a
+  la **rama derecha** por su forma: un tallo curvo que nace abajo a la izquierda
+  y sube a la derecha, espejo de `..._rama izquierda`. No cambiar ese mapeo por
+  el nombre del archivo.
+- **La base no se mueve**: las tres hojas bajas se dibujan fuera del grupo que
+  gira y todas las piezas se anclan desde `baseDeLaPlanta()`; la `x` de la
+  entrada es la de la pantalla (0.22), así el brote ya nace a la izquierda.
+- **El tallo se estira** entre `talloMinimo` 0.20 y `talloMaximo` 0.72 de `full`.
+  La punta se calcula con la inclinación real del PNG (`talloPunta` 0.51,
+  `talloBase` 0.69) y **la flor principal se clava en esa punta**.
+- **Secuencia**:
+  1. con el puño aparece la planta (`visibilidad`) y el **capullo** principal:
+     los dos grupos de pétalos se acercan y se encogen (`escalaCerrada` 0.55/0.5,
+     `estiradoCerrado` 1.65) para formar una yema alta;
+  2. al llegar a la punta (`crecimiento >= 0.985`) la flor principal se abre
+     **con o sin puño**, primero el grupo trasero y después el frontal
+     (`tiemposFlor`); abrir la mano no mueve el crecimiento, así la altura se
+     conserva;
+  3. con la mano abierta, la punta y la flor principal abierta crecen las ramas
+     (`ramas`); la izquierda arranca antes (`retardoRamaDerecha` 0.18) y cada
+     flor se abre cuando su rama llega al final. Abrir la mano antes de subir no
+     adelanta nada: las ramas esperan a que el puño complete la altura.
+- **Cada flor son dos PNG**: el trasero se dibuja primero y el frontal encima,
+  ambos anclados en la misma punta. La rama y su flor comparten
+  `montajeTresFlores()`: no hay dos geometrías que se puedan desincronizar.
+- **Proporciones**: flor principal ~0.34 de `full` de ancho, lateral izquierda
+  ~0.19 y derecha ~0.25; la principal se apoya en la punta del tallo y las
+  laterales en las puntas de las ramas (`unionIzquierda` 0.42 / `puntaIzquierda`
+  0.52, `unionDerecha` 0.38 / `puntaDerecha` 0.475 de `full`). La izquierda
+  queda un poco más alta que la derecha.
+- **Hojas**: la superior izquierda se clava en el tallo a 0.62 de su largo
+  actual, así acompaña el crecimiento; la pequeña derecha se clava sobre la rama
+  derecha. Las tres hojas de la base van fijas.
+- **Comprobación sin cámara**: `plantaDebug.tresFlores()` devuelve
+  `{ cargada, piezas, crecimiento, apertura, ramas, ramaIzquierda, ramaDerecha,
+  florIzquierda, florDerecha, visibilidad, base, puntaTallo, puntaIzquierda,
+  puntaDerecha }`; `base` y las puntas salen de la misma geometría del dibujo.
+  Con el banco headless se verificó: sin mano → 0; mano abierta sin puño → nada;
+  puño → brote; puño arriba → flor principal abierta y ramas 0; mano abierta
+  arriba → ramas y flores 1; abrir antes de subir → conserva la altura y ramas
+  0; `reiniciar()` → todo 0 y la secuencia se repite. La base no se movió al
+  cambiar de altura.
 
 ### Árbol colorido: mecanismo retirado del catálogo
 
