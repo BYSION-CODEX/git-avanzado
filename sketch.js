@@ -346,6 +346,7 @@ let fuerzaViento = VIENTO.fuerzaMinima; // 0..1, ya suavizada
 let direccionViento = VIENTO.direccionMedia; // 1 = derecha
 const tonoMezclado = [0, 0, 0]; // buffer del follaje: evita basura por frame
 let contextoFollaje = null; // contexto 2D cacheado para dibujar el follaje
+let capaArbolPaisaje = null; // buffer del árbol colorido interactivo del fondo
 let vidaPaisaje = 0; // 0..1, ya suavizada: cuánta vida tiene el bosque ahora
 let segundosSinManos = 0; // ausencia sostenida, para la gracia del tracking
 
@@ -380,6 +381,11 @@ function construirEscenario() {
   rachasViento = crearRachas();
   humoViento = crearHumo();
 
+  // El árbol colorido se compone aparte porque su interacción vive en
+  // planta.js: acá solo se le presta un contexto del tamaño del lienzo.
+  capaArbolPaisaje = createGraphics(width, height);
+  capaArbolPaisaje.pixelDensity(1);
+
   // Al final: necesita los árboles ya creados para elegir a cuál mirar.
   reiniciarPersonaje();
 }
@@ -389,6 +395,11 @@ function liberarEscenario() {
   if (fondoEstatico) {
     fondoEstatico.remove();
     fondoEstatico = null;
+  }
+
+  if (capaArbolPaisaje) {
+    capaArbolPaisaje.remove();
+    capaArbolPaisaje = null;
   }
 
   for (const arbol of arbolesViento) arbol.grafico.remove();
@@ -424,11 +435,43 @@ function dibujarEscenario(t, dt) {
   // Los árboles se dibujan por planos para poder intercalar al personaje en el
   // medio: camina detrás de los árboles cercanos y delante de los lejanos.
   dibujarArbolesViento(t, 0);
+  // El árbol colorido es paisaje interactivo: va delante de los árboles lejanos
+  // y detrás de los medios, del personaje y de las plantas de `planta-overlay`.
+  dibujarArbolPaisaje();
   dibujarArbolesViento(t, 1);
   dibujarPersonaje();
   dibujarArbolesViento(t, 2);
   actualizarDibujarPolvo(t, dt);
   dibujarMatujosViento(t);
+}
+
+/**
+ * El árbol colorido del fondo: paisaje, no una planta de la capa de plantas.
+ *
+ * La interacción —crecer con el puño, florecer con la mano abierta, sacudirse,
+ * inclinarse y mecerse con el viento— es EXACTAMENTE la de las plantas, porque
+ * su estado lo lleva `planta.js`: acá no se reimplementa nada, solo se le presta
+ * un contexto 2D del tamaño del lienzo y se compone en el orden del escenario.
+ *
+ * Vive acá y no en `#planta-overlay` por una sola razón: ese canvas está por
+ * encima del de p5, así que ahí quedaría delante del personaje.
+ */
+function dibujarArbolPaisaje() {
+  if (!capaArbolPaisaje) return;
+  if (typeof plantaDebug === 'undefined') return;
+  if (typeof plantaDebug.dibujarPaisaje !== 'function') return;
+
+  const capa = capaArbolPaisaje;
+  // `clearRect` directo sobre el contexto: es el mismo recurso que usa el
+  // overlay de plantas y no depende de la API de p5.Graphics.
+  capa.drawingContext.clearRect(0, 0, width, height);
+
+  // `millis()` en milisegundos: es el reloj que espera el temblor y el vaivén.
+  const dibujado = plantaDebug.dibujarPaisaje(capa.drawingContext, width, height, millis());
+
+  // Sin crecimiento no hay nada que componer: se evita el blit de un buffer
+  // vacío en cada frame.
+  if (dibujado) image(capa, 0, 0);
 }
 
 /**

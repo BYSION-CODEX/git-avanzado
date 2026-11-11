@@ -61,6 +61,44 @@
    */
   const PLANTAS = [
     {
+      id: 'arbol_colorido',
+      archivo: 'arbol-colorido.png',
+      /**
+       * `paisaje: true` = esta entrada NO se dibuja en #planta-overlay.
+       *
+       * Ese canvas va por encima del de p5, así que cualquier planta del
+       * catálogo queda DELANTE del personaje. Este árbol tiene que quedar
+       * detrás, así que sketch.js le presta su capa viva y lo pinta llamando a
+       * `plantaDebug.dibujarPaisaje()`. La interacción es la misma de siempre:
+       * este flag solo cambia quién dibuja.
+       */
+      paisaje: true,
+      // Va entre los árboles lejanos y los medios, sobre el suelo medio y más
+      // alto que ellos (0.16–0.23): se lee como el ejemplar que domina el fondo.
+      x: 0.38,
+      altura: 0.4,
+      capaSuelo: 1,
+      separacionSuelo: 0.005,
+      // El tronco serpentea; esto solo decide por dónde nace el polen.
+      talloX: 0.42,
+      faseViento: 5.3,
+      // Viene en RGB con fondo blanco: mismo recorte al cargar que las demás.
+      toleranciaFondo: 28,
+      /**
+       * Tres copas. El revelado nace donde el tronco se abre en dos y
+       * `juntura` repinta todo lo que queda por debajo, así el tronco nunca se
+       * despega del suelo. `radioMaximo` cubre la copa más lejana.
+       */
+      corola: {
+        centroX: 0.46,
+        centroY: 0.42,
+        radioMinimo: 0.1,
+        radioMaximo: 0.66,
+        suavizado: 0.06,
+        juntura: 0.56,
+      },
+    },
+    {
       id: 'planta_azul',
       archivo: 'planta-azul.png',
       // Segunda planta de fondo: va PRIMERA en la lista para quedar debajo de
@@ -403,9 +441,17 @@
 
     ctx.clearRect(0, 0, anchoCSS, altoCSS);
 
-    // Orden del catálogo: la primera queda debajo.
-    for (const planta of plantas) dibujarPlanta(planta, anchoCSS, altoCSS, ahora);
-    for (const planta of plantas) dibujarParticulas(planta);
+    // Orden del catálogo: la primera queda debajo. Las entradas de paisaje no
+    // se dibujan acá: las pinta sketch.js en su capa viva, detrás del personaje,
+    // con `plantaDebug.dibujarPaisaje()`.
+    for (const planta of plantas) {
+      if (planta.def.paisaje) continue;
+      dibujarPlanta(planta, anchoCSS, altoCSS, ahora);
+    }
+    for (const planta of plantas) {
+      if (planta.def.paisaje) continue;
+      dibujarParticulas(planta);
+    }
 
     pintarPorcentaje(ahora);
   }
@@ -838,22 +884,23 @@
     });
   }
 
-  function dibujarParticulas(planta) {
+  function dibujarParticulas(planta, contexto = ctx) {
     if (planta.particulas.length === 0) return;
 
-    ctx.fillStyle = COLOR_POLEN;
+    const c = contexto || ctx;
+    c.fillStyle = COLOR_POLEN;
 
     for (const particula of planta.particulas) {
       const alfa = Math.max(0, particula.vida / particula.vidaMax);
       if (alfa <= 0.01) continue;
 
-      ctx.globalAlpha = alfa;
-      ctx.beginPath();
-      ctx.arc(particula.x, particula.y, particula.tamano, 0, Math.PI * 2);
-      ctx.fill();
+      c.globalAlpha = alfa;
+      c.beginPath();
+      c.arc(particula.x, particula.y, particula.tamano, 0, Math.PI * 2);
+      c.fill();
     }
 
-    ctx.globalAlpha = 1;
+    c.globalAlpha = 1;
   }
 
   /* ---------- Dibujo ---------- */
@@ -862,10 +909,15 @@
    * La ilustración entera, escalada de forma uniforme con el crecimiento y
    * anclada en el suelo: la base queda fija y la flor crece hacia arriba.
    * No se recorta ni se deforma, así que la proporción original se conserva.
+   *
+   * `contexto` permite dibujar en OTRO canvas 2D con las mismas coordenadas
+   * (mismo ancho y alto lógicos). Lo usa sketch.js para el árbol de paisaje: la
+   * animación es esta misma, solo cambia la capa donde termina el píxel.
    */
-  function dibujarPlanta(planta, ancho, alto, ahora) {
+  function dibujarPlanta(planta, ancho, alto, ahora, contexto = ctx) {
     if (!planta.lista || planta.crecimiento <= 0.004) return;
 
+    const c = contexto || ctx;
     const base = baseDeLaPlanta(planta.def, ancho, alto);
     const alturaDibujo = alto * planta.def.altura * planta.crecimiento;
     const anchoDibujo = alturaDibujo * planta.proporcion;
@@ -873,26 +925,26 @@
     const y = base.y - alturaDibujo;
 
     // El temblor pivota en la base, como un tallo real: no se traslada entero.
-    ctx.save();
+    c.save();
 
     const anguloPlanta =
       inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
 
     if (Math.abs(anguloPlanta) > 0.001) {
-      ctx.translate(base.x, base.y);
-      ctx.rotate(anguloPlanta);
-      ctx.translate(-base.x, -base.y);
+      c.translate(base.x, base.y);
+      c.rotate(anguloPlanta);
+      c.translate(-base.x, -base.y);
     }
 
-    ctx.drawImage(planta.imagen, x, y, anchoDibujo, alturaDibujo);
+    c.drawImage(planta.imagen, x, y, anchoDibujo, alturaDibujo);
 
     // Con la mano abierta la corola se descubre; a 1 se ve la ilustración
     // completa y no hace falta enmascarar nada.
     if (planta.def.corola && planta.florecimiento < 0.999) {
-      revelarCorola(planta, x, y, anchoDibujo, alturaDibujo);
+      revelarCorola(planta, x, y, anchoDibujo, alturaDibujo, c);
     }
 
-    ctx.restore();
+    c.restore();
   }
 
   /**
@@ -936,42 +988,43 @@
    * La geometría es la de ESTA planta (`def.corola`): cada ilustración tiene
    * su corola en otro lugar, y así una no le impone sus números a la otra.
    */
-  function revelarCorola(planta, x, y, ancho, alto) {
+  function revelarCorola(planta, x, y, ancho, alto, contexto = ctx) {
     const corola = planta.def.corola;
+    const c = contexto || ctx;
     const centroX = x + ancho * corola.centroX;
     const centroY = y + alto * corola.centroY;
     const radio =
       alto * (corola.radioMinimo + (corola.radioMaximo - corola.radioMinimo) * planta.florecimiento);
     const borde = radio + alto * corola.suavizado;
 
-    ctx.save();
+    c.save();
 
     // `destination-in` borra TODO lo que la máscara no cubre, no solo el
     // rectángulo que se rellena. En un lienzo compartido eso se llevaría
     // puestas a las demás plantas, así que primero se acota el efecto a la
     // caja de ESTA ilustración.
-    ctx.beginPath();
-    ctx.rect(x, y, ancho, alto);
-    ctx.clip();
+    c.beginPath();
+    c.rect(x, y, ancho, alto);
+    c.clip();
 
-    const degradado = ctx.createRadialGradient(centroX, centroY, 0, centroX, centroY, borde);
+    const degradado = c.createRadialGradient(centroX, centroY, 0, centroX, centroY, borde);
     degradado.addColorStop(0, 'rgba(0, 0, 0, 1)');
     degradado.addColorStop(radio / borde, 'rgba(0, 0, 0, 1)');
     degradado.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
     // `destination-in` deja solo lo que cae dentro del degradado.
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = degradado;
-    ctx.fillRect(x, y, ancho, alto);
+    c.globalCompositeOperation = 'destination-in';
+    c.fillStyle = degradado;
+    c.fillRect(x, y, ancho, alto);
 
     // El tallo y las hojas no florecen: se repintan completos.
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.beginPath();
-    ctx.rect(x, y + alto * corola.juntura, ancho, alto * (1 - corola.juntura));
-    ctx.clip();
-    ctx.drawImage(planta.imagen, x, y, ancho, alto);
+    c.globalCompositeOperation = 'source-over';
+    c.beginPath();
+    c.rect(x, y + alto * corola.juntura, ancho, alto * (1 - corola.juntura));
+    c.clip();
+    c.drawImage(planta.imagen, x, y, ancho, alto);
 
-    ctx.restore();
+    c.restore();
   }
 
   /**
@@ -1050,6 +1103,29 @@
     crecimientoDe: (id) => {
       const planta = plantas.find((candidata) => candidata.def.id === id);
       return planta ? planta.crecimiento : null;
+    },
+    /**
+     * Dibuja las entradas marcadas con `paisaje: true` en OTRO contexto 2D, con
+     * las mismas coordenadas lógicas del lienzo. La usa sketch.js para el árbol
+     * colorido: comparte la interacción entera, pero se pinta en la capa viva
+     * del escenario para quedar detrás del personaje.
+     *
+     * Devuelve true si dibujó algo, así sketch.js puede saltearse la
+     * composición cuando el árbol todavía no creció.
+     */
+    dibujarPaisaje: (contexto, ancho, alto, ahora) => {
+      if (!contexto) return false;
+
+      let dibujado = false;
+
+      for (const planta of plantas) {
+        if (!planta.def.paisaje) continue;
+        dibujarPlanta(planta, ancho, alto, ahora, contexto);
+        dibujarParticulas(planta, contexto);
+        if (planta.lista && planta.crecimiento > 0.004) dibujado = true;
+      }
+
+      return dibujado;
     },
     // Permite probar la emisión de partículas sin un canvas real.
     dimensiones: (ancho, alto) => {

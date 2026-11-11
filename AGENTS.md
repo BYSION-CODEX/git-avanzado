@@ -8,7 +8,8 @@ sin build, sin package manager, sin tests.
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
 gestos (mano abierta / puño) + cuatro plantas que crecen y florecen (la central,
 la morada a la izquierda, la naranja a la derecha y una azul pequeña en el
-segundo plano, con el mismo catálogo para sumar más) + paisaje
+segundo plano, con el mismo catálogo para sumar más) + un árbol colorido
+interactivo en el segundo plano + paisaje
 animado por viento + árboles que reverdecen con ese crecimiento mientras haya
 manos en cuadro + personaje que camina en el fondo, se entristece y celebra con
 las manos arriba cuando la planta crece. Del cuerpo se leen
@@ -55,10 +56,11 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `planta-morada.png` | ilustración de `planta_morada`, a la izquierda de la central (281×528, **sin alfa**: el fondo blanco se recorta al cargar; asset obligatorio) |
 | `planta-naranja.png` | ilustración de `planta_naranja`, a la derecha de la central (249×609, **sin alfa**: mismo recorte al cargar; asset obligatorio) |
 | `planta-azul.png` | ilustración de `planta_azul`, en el segundo plano a la derecha (249×601, **sin alfa**: mismo recorte al cargar) |
+| `arbol-colorido.png` | ilustración de `arbol_colorido`, el árbol interactivo del segundo plano (513×521, **sin alfa**: mismo recorte al cargar) |
 
-Cinco archivos de código y seis imágenes (el personaje con su pose feliz
-opcional y las cuatro plantas). Si aparece un módulo nuevo, registrarlo en
-`index.html` en el orden correcto y documentarlo acá.
+Cinco archivos de código y siete imágenes (el personaje con su pose feliz
+opcional, las cuatro plantas y el árbol colorido del fondo). Si aparece un
+módulo nuevo, registrarlo en `index.html` en el orden correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
@@ -402,6 +404,28 @@ parte en dos capas:
   estado de cada una.
 - Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
   0.20 → 100%, y el mapeo es monótono en toda la banda.
+
+### Árbol colorido: paisaje interactivo, no capa de plantas
+
+- Es una entrada más del catálogo (`arbol_colorido`), así que **comparte toda la
+  interacción**: crece con el puño, florece con la mano abierta, se sacude, se
+  inclina y se mece con el viento. No existe una segunda lógica de gestos.
+- **`paisaje: true` solo cambia quién dibuja.** `#planta-overlay` se dibuja por
+  encima del canvas de p5, así que ahí el árbol quedaría DELANTE del personaje.
+  Las entradas de paisaje se saltean en el bucle del overlay (incluidas sus
+  partículas) y las pinta `sketch.js` llamando a
+  `plantaDebug.dibujarPaisaje(contexto, ancho, alto, ahora)`, que dibuja esas
+  entradas en el contexto 2D que se le pase, con las mismas coordenadas lógicas.
+- `sketch.js` le presta un `p5.Graphics` del tamaño del lienzo
+  (`capaArbolPaisaje`, con `pixelDensity(1)` y liberado en `liberarEscenario()`)
+  y lo compone en `dibujarEscenario()` entre los árboles lejanos y los medios:
+  detrás del personaje, de los árboles medios y de las plantas.
+- Si el árbol no creció, `dibujarPaisaje()` devuelve `false` y la escena se
+  saltea el blit de un buffer vacío en ese frame.
+- `corola` es el revelado de las tres copas (nace donde el tronco se abre) y
+  `juntura` repinta el tronco entero por debajo, así nunca se separa del suelo.
+- Para sumar otro elemento de fondo alcanza con otra entrada con `paisaje: true`:
+  no hay que tocar `sketch.js` ni la interacción.
 
 ### Florecimiento
 
