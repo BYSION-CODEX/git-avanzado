@@ -61,8 +61,37 @@
    */
   const PLANTAS = [
     {
+      id: 'planta_azul',
+      archivo: 'planta-azul.png',
+      // Segunda planta de fondo: va PRIMERA en la lista para quedar debajo de
+      // las tres del primer plano, sobre el suelo medio y a escala de los
+      // árboles de ese plano (0.16–0.23 del alto).
+      x: 0.86,
+      altura: 0.24,
+      capaSuelo: 1,
+      separacionSuelo: 0.005,
+      // El tallo de esta ilustración está a la izquierda del centro.
+      talloX: 0.44,
+      faseViento: 4.1,
+      // Igual que las otras dos: viene en RGB sin alfa.
+      toleranciaFondo: 28,
+      // Dos cabezuelas en el extremo superior y las hojas a media altura. El
+      // revelado corta por debajo de las cabezuelas, así el tallo y las hojas
+      // quedan siempre unidos al suelo.
+      corola: {
+        centroX: 0.5,
+        centroY: 0.13,
+        radioMinimo: 0.06,
+        radioMaximo: 0.42,
+        suavizado: 0.03,
+        juntura: 0.28,
+      },
+    },
+    {
       id: 'planta_central',
       archivo: 'flor.png',
+      // Es la que publica el porcentaje y la que lee sketch.js.
+      principal: true,
       x: 0.5,
       altura: 0.42,
       capaSuelo: 2,
@@ -231,8 +260,14 @@
   /** Una instancia por entrada del catálogo: imagen y animación propias. */
   const plantas = PLANTAS.map(crearPlanta);
 
-  /** La central es la que publica el porcentaje y la que lee sketch.js. */
-  const principal = plantas[0];
+  /**
+   * La central es la que publica el porcentaje y la que lee sketch.js.
+   * Se marca con `principal: true` en el catálogo y NO se busca por posición:
+   * el orden de la lista es el orden de dibujo, y una planta de fondo puede ir
+   * primero sin romper el contrato.
+   */
+  const principal =
+    plantas.find((planta) => planta.def.principal) || plantas[plantas.length - 1];
 
   function crearPlanta(def) {
     return {

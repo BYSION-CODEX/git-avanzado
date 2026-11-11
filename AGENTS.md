@@ -6,9 +6,9 @@ sin build, sin package manager, sin tests.
 ## Estado
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
-gestos (mano abierta / puño) + tres plantas que crecen y florecen (la central,
-la morada de la izquierda y la naranja de la derecha, con el mismo catálogo para
-sumar más) + paisaje
+gestos (mano abierta / puño) + cuatro plantas que crecen y florecen (la central,
+la morada a la izquierda, la naranja a la derecha y una azul pequeña en el
+segundo plano, con el mismo catálogo para sumar más) + paisaje
 animado por viento + árboles que reverdecen con ese crecimiento mientras haya
 manos en cuadro + personaje que camina en el fondo, se entristece y celebra con
 las manos arriba cuando la planta crece. Del cuerpo se leen
@@ -54,9 +54,10 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `flor.png` | ilustración de la planta central (PNG con transparencia; **asset obligatorio**: sin él la planta no aparece) |
 | `planta-morada.png` | ilustración de `planta_morada`, a la izquierda de la central (281×528, **sin alfa**: el fondo blanco se recorta al cargar; asset obligatorio) |
 | `planta-naranja.png` | ilustración de `planta_naranja`, a la derecha de la central (249×609, **sin alfa**: mismo recorte al cargar; asset obligatorio) |
+| `planta-azul.png` | ilustración de `planta_azul`, en el segundo plano a la derecha (249×601, **sin alfa**: mismo recorte al cargar) |
 
-Cinco archivos de código y cinco imágenes (el personaje con su pose feliz
-opcional y las tres plantas). Si aparece un módulo nuevo, registrarlo en
+Cinco archivos de código y seis imágenes (el personaje con su pose feliz
+opcional y las cuatro plantas). Si aparece un módulo nuevo, registrarlo en
 `index.html` en el orden correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
@@ -337,18 +338,25 @@ parte en dos capas:
 - Por eso `sketch.js` **no** se tocó: ni `setup()`, ni `draw()`, ni el paisaje.
 - **Un catálogo, no un caso especial.** `PLANTAS` en `planta.js` es una lista de
   plantas; cada entrada define `id`, `archivo`, `x`, `altura`, `capaSuelo`,
-  `separacionSuelo`, `talloX`, `faseViento` y `corola`. La interacción
-  —crecimiento, floración, sacudida, inclinación y viento— es **una sola** y la
-  comparten todas. Para sumar otra planta alcanza con agregar un objeto a la
-  lista; no hay que tocar ninguna interacción.
+  `separacionSuelo`, `talloX`, `faseViento`, `toleranciaFondo` y `corola`. La
+  interacción —crecimiento, floración, sacudida, inclinación y viento— es **una
+  sola** y la comparten todas. Para sumar otra planta alcanza con agregar un
+  objeto a la lista; no hay que tocar ninguna interacción.
+- **Profundidad = orden de la lista + capa de suelo**. La lista se dibuja de
+  atrás hacia adelante (la primera queda debajo) y `capaSuelo` decide de qué
+  franja del terreno nace: `0` lejos, `1` medio, `2` cerca. La `planta_azul` va
+  primera y en la capa `1`, con `altura` 0.24 —un poco por encima de los
+  árboles de ese plano (0.16–0.23)— para que la flor se lea como planta y siga
+  claramente detrás de las tres del primer plano (0.36–0.42).
 - **Cada planta tiene su propio estado**: imagen, proporción, `crecimiento`,
   `florecimiento` y partículas. El objetivo lo calculan las manos una vez y cada
   planta lo alcanza con su suavizado, así no comparten la variable de dibujo.
 - **Sumar otra planta**: (1) copiar el PNG recortado con el nombre
   `planta-<color>.png`; (2) agregar un objeto a `PLANTAS` con `id`, `archivo`,
-  `x`, `altura` y su `corola`; (3) nada más. No hace falta tocar gestos,
-  `sketch.js`, `index.html` ni la cámara. El orden de la lista es el de dibujo:
-  la primera queda debajo.
+  `x`, `altura`, `capaSuelo`, `toleranciaFondo` y su `corola`, en la posición de
+  la lista que le corresponde por profundidad; (3) nada más. No hace falta tocar
+  gestos, `sketch.js`, `index.html` ni la cámara. El orden de la lista es el de
+  dibujo: la primera queda debajo.
 - `planta-<color>.png` es la fuente única de cada ilustración: se dibuja tal
   cual, con sus colores, pétalos y proporciones. `planta.js` no redibuja nada;
   solo la escala, la inclina, la sacude y la revela. El PNG tiene que venir
@@ -359,9 +367,9 @@ parte en dos capas:
   (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la base
   queda clavada sobre el suelo mientras la planta crece hacia arriba.
 - `altura` (fracción del alto del lienzo al 100%) y `x` (fracción del ancho) son
-  de cada planta: la central va en `0.5` / `0.42`, la morada en `0.25` / `0.36` y
-  la naranja en `0.76` / `0.36`. Cada `faseViento` distinta evita que las tres se
-  mezan al unísono.
+  de cada planta: la central va en `0.5` / `0.42`, la morada en `0.25` / `0.36`,
+  la naranja en `0.76` / `0.36` y la azul en `0.86` / `0.24`. Cada `faseViento`
+  distinta evita que se mezan al unísono.
 - La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
   no está lista esa planta no se dibuja; si falta el archivo, el resto de la
   experiencia sigue andando y solo se pierde esa planta.
@@ -373,9 +381,10 @@ parte en dos capas:
   encerrado entre las campanas, que ninguna inundación desde el borde alcanza.
   En `0` se desactiva (`flor.png` ya trae alfa).
 - **Contrato con `sketch.js`**: `plantaDebug.crecimiento()` y
-  `plantaDebug.florecimiento()` hablan de la planta **central** (la primera del
-  catálogo). El follaje y el personaje leen de ahí; por eso `principal` es
-  `PLANTAS[0]` y no se reordena la lista sin querer.
+  `plantaDebug.florecimiento()` hablan de la planta **central**, marcada con
+  `principal: true` en el catálogo. El follaje y el personaje leen de ahí; por
+  eso la central no se saca de la lista y su `principal` no se mueve, aunque
+  cambie el orden de dibujo.
 - Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
   y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
 - Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
