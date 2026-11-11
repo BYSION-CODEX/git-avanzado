@@ -278,6 +278,9 @@ const PERSONAJE = {
   // Tiene que estar en la raíz del proyecto, junto a index.html, servido por el
   // mismo origen. Sin este archivo el sketch funciona igual, sin personaje.
   rutaImagen: 'personaje.png',
+  // Pose feliz con las manos arriba. Es opcional: si falta, el estado feliz
+  // usa el sprite de siempre (con el salto, pero sin cambiar la pose).
+  rutaImagenFeliz: 'personaje-feliz.png',
   altura: 0.14, // fracción del alto del lienzo
   velocidad: 0.05, // fracción del alto por segundo (lento: está lejos)
   pasos: 1.45, // pasos por segundo
@@ -289,6 +292,15 @@ const PERSONAJE = {
   duracionMirar: 1.3, // segundos mirando las ramas
   duracionTriste: 2.9, // segundos de tristeza
   cadaLagrima: 0.9, // segundos entre lágrima y lágrima mientras está triste
+  // Felicidad: la dispara la planta crecida. En cuanto aparece, celebra con
+  // los brazos arriba y ya no vuelve al ciclo triste.
+  crecimientoFeliz: 0.05, // 0..1
+  velocidadFeliz: 1.1, // multiplica la velocidad al caminar celebrando
+  ritmoFeliz: 0.9, // multiplica la frecuencia del rebote de celebración
+  saltoFeliz: 0.055, // fracción del alto que salta
+  balanceoFeliz: 0.035, // radianes de vaivén con los brazos arriba
+  inclinacionFeliz: -0.02, // se yergue apenas
+  escalaFeliz: 1, // ajuste fino si la pose feliz tiene otra proporción
   // Fondo claro a recortar: sin esto la imagen blanca taparía el paisaje.
   toleranciaFondo: 28, // 0 desactiva el recorte
   // Dónde está el ojo en la imagen (0..1 desde arriba a la izquierda). Solo se
@@ -311,13 +323,15 @@ let humoViento = []; // [{ fuente, puffs }] una columna por chimenea
 /** Estado del personaje. La imagen llega async; el resto existe desde setup. */
 const personaje = {
   imagen: null,
+  imagenFeliz: null,
   cargando: false,
+  cargandoFeliz: false,
   x: 0,
   ancho: 0,
   alto: 0,
   arbol: null, // árbol seco al que mira
   xParada: 0,
-  estado: 'caminando', // 'caminando' | 'mirando' | 'triste'
+  estado: 'caminando', // 'caminando' | 'mirando' | 'triste' | 'feliz'
   relojEstado: 0,
   relojLagrima: 0,
   miradaHecha: false, // ya frenó en el árbol en esta pasada
@@ -1396,12 +1410,43 @@ function cargarPersonaje() {
       ubicarParada();
 
       console.info(`[personaje] Listo: ${imagen.width}×${imagen.height}`);
+
+      // La pose feliz es opcional: si falta, el estado feliz usa esta misma.
+      cargarPersonajeFeliz();
     },
     (error) => {
       personaje.cargando = false;
       console.error(
         `[personaje] No se pudo cargar "${PERSONAJE.rutaImagen}". Guardá la imagen en la raíz del proyecto, junto a index.html.`,
         error
+      );
+    }
+  );
+}
+
+/**
+ * Pose feliz, con las manos arriba. Se carga aparte y es opcional: si el
+ * archivo no está, el personaje celebra igual con el sprite de siempre.
+ */
+function cargarPersonajeFeliz() {
+  if (personaje.imagenFeliz || personaje.cargandoFeliz) return;
+
+  if (typeof loadImage !== 'function') return;
+
+  personaje.cargandoFeliz = true;
+
+  loadImage(
+    PERSONAJE.rutaImagenFeliz,
+    (imagen) => {
+      personaje.cargandoFeliz = false;
+      recortarFondoImagen(imagen);
+      personaje.imagenFeliz = imagen;
+      console.info(`[personaje] Pose feliz lista: ${imagen.width}×${imagen.height}`);
+    },
+    () => {
+      personaje.cargandoFeliz = false;
+      console.warn(
+        `[personaje] No se encontró "${PERSONAJE.rutaImagenFeliz}": el estado feliz usa la pose actual.`
       );
     }
   );
@@ -1452,6 +1497,8 @@ function ubicarParada() {
 /**
  * Camina → frena → mira las ramas → se pone triste → sigue caminando. Al salir
  * por la derecha reingresa por la izquierda: el bucle no tiene costura.
+ * Mientras la vida del paisaje está activa (manos en cuadro + planta crecida)
+ * el recorrido se interrumpe y celebra con la pose feliz.
  * Todo el avance sale de `dt`, así que no depende del framerate.
  */
 function actualizarPersonaje(dt) {
@@ -1459,9 +1506,28 @@ function actualizarPersonaje(dt) {
 
   if (!personaje.imagen) return;
 
+  // La planta crecida lo pone feliz: no depende de que las manos sigan en
+  // cuadro, porque la planta se queda. Antes de eso hace su recorrido normal.
+  const crecimiento = typeof objetivoDeVida === 'function' ? objetivoDeVida() : 0;
+  const quiereCelebrar = crecimiento >= PERSONAJE.crecimientoFeliz;
+
+  if (quiereCelebrar && personaje.estado !== 'feliz') {
+    personaje.estado = 'feliz';
+    personaje.relojEstado = 0;
+    personaje.lagrimas.length = 0;
+  } else if (!quiereCelebrar && personaje.estado === 'feliz') {
+    personaje.estado = 'caminando';
+    personaje.relojEstado = 0;
+  }
+
   personaje.relojEstado += dt;
 
-  if (personaje.estado === 'caminando') {
+  if (personaje.estado === 'feliz') {
+    // Camina celebrando: así se lo ve aunque la planta crezca cuando está
+    // entrando o saliendo de cuadro.
+    personaje.x += height * PERSONAJE.velocidad * PERSONAJE.velocidadFeliz * dt;
+    personaje.fasePaso += dt * PERSONAJE.pasos * PERSONAJE.ritmoFeliz;
+  } else if (personaje.estado === 'caminando') {
     personaje.x += height * PERSONAJE.velocidad * dt;
     personaje.fasePaso += dt * PERSONAJE.pasos;
 
@@ -1498,16 +1564,18 @@ function actualizarPersonaje(dt) {
   // Fuera de pantalla por la derecha: reingresa por la izquierda.
   if (personaje.x > width + personaje.ancho) {
     personaje.x = -personaje.ancho;
-    personaje.estado = 'caminando';
+    personaje.estado = quiereCelebrar ? 'feliz' : 'caminando';
     personaje.relojEstado = 0;
     personaje.miradaHecha = false; // en la vuelta siguiente vuelve a frenar
     personaje.lagrimas.length = 0;
   }
 
   // Pose: mirar = se echa atrás para ver las ramas; triste = cabecea y se
-  // hunde en sí mismo. El pasaje es exponencial: no hay salto entre estados.
+  // hunde en sí mismo; feliz = se yergue. El pasaje es exponencial: no hay
+  // salto entre estados.
   let objetivo = 0;
-  if (personaje.estado === 'mirando') objetivo = PERSONAJE.inclinacionMirar;
+  if (personaje.estado === 'feliz') objetivo = PERSONAJE.inclinacionFeliz;
+  else if (personaje.estado === 'mirando') objetivo = PERSONAJE.inclinacionMirar;
   else if (personaje.estado === 'triste') objetivo = PERSONAJE.inclinacionTriste;
 
   const k = 1 - Math.exp(-PERSONAJE.suavizado * dt);
@@ -1524,22 +1592,40 @@ function actualizarPersonaje(dt) {
 function dibujarPersonaje() {
   if (!personaje.imagen) return;
 
-  const ancho = personaje.ancho;
   const alto = personaje.alto;
   // Base sobre la capa de suelo del plano medio: al caminar sigue el relieve,
   // así que sube y baja con la tierra en vez de moverse en línea recta.
   const base = bordeDeSuelo(personaje.x, CAPAS_SUELO[1], horizonteEscena) + height * 0.004;
 
   const caminando = personaje.estado === 'caminando';
-  const balanceo = caminando ? Math.sin(personaje.fasePaso * Math.PI) * PERSONAJE.balanceoPaso : 0;
-  // Un rebote por paso: el cuerpo sube cuando el peso pasa por la pierna.
-  const rebote = caminando ? Math.abs(Math.sin(personaje.fasePaso * Math.PI)) * alto * 0.03 : 0;
+  const celebrando = personaje.estado === 'feliz';
+
+  // La pose feliz puede tener otra proporción (manos arriba): se escala por el
+  // alto y el ancho sale de SU imagen, así nunca se estira.
+  const imagen = celebrando && personaje.imagenFeliz ? personaje.imagenFeliz : personaje.imagen;
+  const altoDibujo = alto * (celebrando ? PERSONAJE.escalaFeliz : 1);
+  const anchoDibujo = altoDibujo * (imagen.width / imagen.height);
+
+  const balanceo = caminando
+    ? Math.sin(personaje.fasePaso * Math.PI) * PERSONAJE.balanceoPaso
+    : celebrando
+      ? Math.sin(personaje.fasePaso * Math.PI) * PERSONAJE.balanceoFeliz
+      : 0;
+
+  // Un rebote por paso al caminar; un salto más amplio al celebrar.
+  const reboteCaminar = caminando
+    ? Math.abs(Math.sin(personaje.fasePaso * Math.PI)) * alto * 0.03
+    : 0;
+  const reboteFeliz = celebrando
+    ? Math.abs(Math.sin(personaje.fasePaso * Math.PI)) * alto * PERSONAJE.saltoFeliz
+    : 0;
+  const rebote = reboteCaminar + reboteFeliz;
 
   push();
   translate(personaje.x, base - rebote);
   rotate(personaje.inclinacion + balanceo);
   scale(1, personaje.hundimiento);
-  image(personaje.imagen, -ancho * 0.5, -alto, ancho, alto);
+  image(imagen, -anchoDibujo * 0.5, -altoDibujo, anchoDibujo, altoDibujo);
   dibujarLagrimas();
   pop();
 }

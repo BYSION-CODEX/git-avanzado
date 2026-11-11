@@ -6,12 +6,13 @@
    del mismo tamaño que el de p5 se limpia y se repinta a 60 fps, y así el
    crecimiento no obliga a repintar el fondo ni el pasto.
 
-   La flor es la ilustración `flor.png`: acá no se redibuja, solo se escala,
-   se inclina, se sacude y se revela. La interacción es la misma de siempre.
+   Cada planta es una ilustración propia (`flor.png`, `planta-morada.png`, …):
+   acá no se redibuja ninguna, solo se escalan, se inclinan, se sacuden y se
+   revelan. La interacción es UNA sola y la comparten todas.
 
    Entradas: obtenerManos() de sketch.js (manos normalizadas 0..1, ya
-   suavizadas, con su gesto). Salidas: la planta y el porcentaje en el
-   panel de cámara.
+   suavizadas, con su gesto). Salidas: las plantas y el porcentaje en el
+   panel de cámara (el de la planta central, que es el contrato de siempre).
 
    No toca cámara, Body Pose, Hand Pose ni el paisaje.
    ============================================================ */
@@ -43,24 +44,80 @@
   /** El florecimiento va más lento que el crecimiento: se siente natural. */
   const VELOCIDAD_FLORACION = 2.6;
 
-  /** Ilustración de la flor: PNG con transparencia, se dibuja tal cual. */
-  const ARCHIVO_FLOR = 'flor.png';
+  /* ---------- Catálogo de plantas ---------- */
 
   /**
-   * Geometría del florecimiento, en fracciones del alto de la ilustración.
+   * Una entrada = una ilustración + su lugar en el escenario.
    *
-   * La corola se descubre desde su base —donde nace del tallo— hacia afuera.
-   * Es un revelado, no una deformación: los pétalos no se estiran, se dejan de
-   * tapar. `radioMaximo` cubre la corola entera cuando florecimiento llega a 1.
+   * La interacción —crecimiento con el puño, floración con la mano abierta,
+   * sacudida y inclinación— es una sola y la comparten todas las plantas. Acá
+   * solo se decide de dónde nace cada imagen, cuánto mide y qué parte se
+   * revela al florecer. Para sumar otra planta alcanza con agregar un objeto a
+   * esta lista: no hay que tocar ninguna interacción.
+   *
+   * El orden de la lista es el orden de dibujo (la primera queda debajo).
+   * `x` va en fracción del ancho del lienzo; `altura`, en fracción del alto al
+   * 100% de crecimiento. La proporción NO se declara: sale del PNG al cargar.
    */
-  const COROLA = {
-    centroX: 0.5,
-    centroY: 0.3,
-    radioMinimo: 0.13,
-    radioMaximo: 0.4,
-    suavizado: 0.03,
-    juntura: 0.318,
-  };
+  const PLANTAS = [
+    {
+      id: 'planta_central',
+      archivo: 'flor.png',
+      x: 0.5,
+      altura: 0.42,
+      capaSuelo: 2,
+      separacionSuelo: 0.01,
+      // Su tallo es recto y centrado en la ilustración.
+      talloX: 0.5,
+      // Desfase del vaivén ambiental, para que no se muevan al unísono.
+      faseViento: 0,
+      // `flor.png` ya viene con alfa: no hay fondo que recortar.
+      toleranciaFondo: 0,
+      /**
+       * Geometría del florecimiento, en fracciones del alto de la ilustración.
+       * La corola se descubre desde su base —donde nace del tallo— hacia
+       * afuera. Es un revelado, no una deformación: los pétalos no se estiran,
+       * se dejan de tapar. `radioMaximo` cubre la corola a florecimiento 1.
+       * `juntura` es la altura por debajo de la cual la imagen se repinta
+       * completa: el tallo y las hojas no florecen. `null` desactiva el
+       * revelado (la ilustración se dibuja entera siempre).
+       */
+      corola: {
+        centroX: 0.5,
+        centroY: 0.3,
+        radioMinimo: 0.13,
+        radioMaximo: 0.4,
+        suavizado: 0.03,
+        juntura: 0.318,
+      },
+    },
+    {
+      id: 'planta_morada',
+      archivo: 'planta-morada.png',
+      // A la izquierda de la central, más baja y sin invadir su espacio: se
+      // lee como el primer plano del jardín.
+      x: 0.25,
+      altura: 0.36,
+      capaSuelo: 2,
+      separacionSuelo: 0.01,
+      // El tallo de esta ilustración está un poco a la izquierda del centro.
+      talloX: 0.48,
+      faseViento: 1.4,
+      // Viene en RGB sin alfa: el fondo blanco se recorta al cargar.
+      toleranciaFondo: 28,
+      // Las tres campanas viven en el tercio superior; las hojas, justo debajo.
+      // El revelado nace en el centro del manojo y `juntura` corta por encima
+      // de las hojas, así el tallo y las hojas nunca se separan del suelo.
+      corola: {
+        centroX: 0.5,
+        centroY: 0.26,
+        radioMinimo: 0.12,
+        radioMaximo: 0.5,
+        suavizado: 0.03,
+        juntura: 0.36,
+      },
+    },
+  ];
 
   /* ---------- Sacudida ---------- */
 
@@ -115,13 +172,10 @@
    * toca la inclinación que controla la mano.
    */
   const VIENTO_PLANTA = {
-    amplitud: 0.035, // rad a viento máximo (~2°)
+    amplitud: 0.045, // rad a viento máximo (~3°)
     velocidad: 1.7, // rad/s del vaivén, como los árboles
     velocidadDeriva: 0.35, // rad/s de la deriva lenta
   };
-
-  /** Proporción del alto del lienzo que ocupa la planta al 100%. */
-  const ALTURA_MAXIMA = 0.42;
 
   /* ---------- Estado ---------- */
 
@@ -130,10 +184,12 @@
   let anchoCSS = 0;
   let altoCSS = 0;
 
-  let crecimiento = 0; // valor mostrado (suavizado) 0..1
+  /**
+   * Estado COMPARTIDO por todas las plantas: los objetivos salen de las manos,
+   * y cada planta los alcanza con su propio suavizado.
+   */
   let objetivo = 0; // nivel elegido 0..1
   let indiceNivel = 0; // nivel actual, para la histéresis
-  let florecimiento = 0; // revelado de la corola 0..1
   let objetivoFloracion = 0;
   let ultimoFrame = 0;
   let ultimoTexto = 0;
@@ -143,14 +199,27 @@
   let inclinacion = 0; // radianes, ya suavizada
   let velocidadInclinacion = 0; // rad/s, para el resorte
   let objetivoInclinacion = 0;
-  let particulas = [];
-  let acumuladorEmision = 0;
   let relojDebug = 0;
   const estadosSacudida = {}; // un estado por mano (clave: handedness)
 
-  let imagenFlor = null;
-  let imagenLista = false;
-  let proporcionFlor = 1; // ancho / alto, se lee al cargar la ilustración
+  /** Una instancia por entrada del catálogo: imagen y animación propias. */
+  const plantas = PLANTAS.map(crearPlanta);
+
+  /** La central es la que publica el porcentaje y la que lee sketch.js. */
+  const principal = plantas[0];
+
+  function crearPlanta(def) {
+    return {
+      def,
+      imagen: null,
+      lista: false,
+      proporcion: 1, // ancho / alto, se lee al cargar la ilustración
+      crecimiento: 0, // valor mostrado (suavizado) 0..1
+      florecimiento: 0, // revelado de la corola 0..1
+      particulas: [],
+      acumuladorEmision: 0,
+    };
+  }
 
   /* ---------- Arranque ---------- */
 
@@ -164,25 +233,97 @@
     ctx = lienzo.getContext('2d');
     if (!ctx) return;
 
-    cargarFlor();
+    cargarImagenes();
     requestAnimationFrame(bucle);
   }
 
   /**
-   * La ilustración se carga con callbacks, como el personaje: hasta que no
-   * está lista no se dibuja nada. Si falta el archivo, la experiencia sigue
-   * andando y solo se pierde la planta.
+   * Cada ilustración se carga con callbacks, como el personaje: hasta que no
+   * está lista esa planta no se dibuja. Si falta un archivo, la experiencia
+   * sigue andando y solo se pierde esa planta.
    */
-  function cargarFlor() {
-    imagenFlor = new Image();
-    imagenFlor.onload = () => {
-      proporcionFlor = imagenFlor.naturalWidth / imagenFlor.naturalHeight;
-      imagenLista = true;
+  function cargarImagenes() {
+    for (const planta of plantas) cargarImagen(planta);
+  }
+
+  function cargarImagen(planta) {
+    const imagen = new Image();
+    imagen.onload = () => {
+      planta.proporcion = imagen.naturalWidth / imagen.naturalHeight;
+      planta.imagen = recortarFondo(planta, imagen);
+      planta.lista = true;
     };
-    imagenFlor.onerror = () => {
-      console.warn('[planta] No se pudo cargar ' + ARCHIVO_FLOR + '; la planta no se dibuja.');
+    imagen.onerror = () => {
+      console.warn(
+        '[planta] No se pudo cargar ' + planta.def.archivo + '; esa planta no se dibuja.'
+      );
     };
-    imagenFlor.src = ARCHIVO_FLOR;
+    imagen.src = planta.def.archivo;
+    planta.imagen = imagen;
+  }
+
+  /**
+   * Un PNG puede venir con fondo blanco y sin canal alfa (es el caso de
+   * `planta-morada.png`). Se recorta al cargar con el MISMO algoritmo del
+   * personaje: inunda desde los bordes en vez de aplicar un umbral global, así
+   * los blancos internos de la ilustración —brillos, bordes de pétalo— quedan
+   * intactos. `toleranciaFondo: 0` desactiva el recorte.
+   *
+   * `recortarFondoClaro()` vive en sketch.js y se reutiliza acá a propósito:
+   * un solo algoritmo de recorte en todo el proyecto.
+   */
+  function recortarFondo(planta, imagen) {
+    const tolerancia = planta.def.toleranciaFondo;
+    if (!tolerancia) return imagen;
+
+    if (typeof recortarFondoClaro !== 'function') {
+      console.warn(
+        '[planta] Falta recortarFondoClaro() de sketch.js; ' +
+          planta.def.archivo +
+          ' se dibuja con su fondo.'
+      );
+      return imagen;
+    }
+
+    const lienzo = document.createElement('canvas');
+    lienzo.width = imagen.naturalWidth;
+    lienzo.height = imagen.naturalHeight;
+
+    const contexto = lienzo.getContext('2d');
+    if (!contexto) return imagen;
+
+    contexto.drawImage(imagen, 0, 0);
+
+    let datos;
+    try {
+      datos = contexto.getImageData(0, 0, lienzo.width, lienzo.height);
+    } catch (error) {
+      // Origen cruzado: el canvas queda manchado y no se puede leer.
+      console.warn('[planta] No se pudo leer ' + planta.def.archivo + ': ' + error.message);
+      return imagen;
+    }
+
+    recortarFondoClaro(datos.data, lienzo.width, lienzo.height, tolerancia);
+    limpiarBlancosEncerrados(datos.data);
+
+    contexto.putImageData(datos, 0, 0);
+
+    return lienzo;
+  }
+
+  /**
+   * El fondo que la ilustración encierra —el hueco entre dos campanas, por
+   * ejemplo— no lo alcanza ninguna inundación desde el borde. Se limpia solo el
+   * blanco PURO: en estas ilustraciones planas el dibujo nunca llega a 250 en
+   * los tres canales, así que no se come ningún detalle.
+   */
+  function limpiarBlancosEncerrados(pixeles) {
+    for (let p = 0; p < pixeles.length; p += 4) {
+      if (pixeles[p + 3] === 0) continue;
+      if (pixeles[p] >= 250 && pixeles[p + 1] >= 250 && pixeles[p + 2] >= 250) {
+        pixeles[p + 3] = 0;
+      }
+    }
   }
 
   function bucle(ahora) {
@@ -200,8 +341,11 @@
     actualizar(dt, ahora);
 
     ctx.clearRect(0, 0, anchoCSS, altoCSS);
-    dibujarPlanta(anchoCSS, altoCSS, ahora);
-    dibujarParticulas();
+
+    // Orden del catálogo: la primera queda debajo.
+    for (const planta of plantas) dibujarPlanta(planta, anchoCSS, altoCSS, ahora);
+    for (const planta of plantas) dibujarParticulas(planta);
+
     pintarPorcentaje(ahora);
   }
 
@@ -321,9 +465,13 @@
     }
 
     const factor = 1 - Math.exp(-VELOCIDAD_CRECIMIENTO * dt);
-    crecimiento += (objetivo - crecimiento) * factor;
 
-    if (Math.abs(objetivo - crecimiento) < 0.001) crecimiento = objetivo;
+    // El objetivo es uno solo; cada planta lo alcanza con su propio estado,
+    // así crecen juntas sin compartir la variable de dibujo.
+    for (const planta of plantas) {
+      planta.crecimiento += (objetivo - planta.crecimiento) * factor;
+      if (Math.abs(objetivo - planta.crecimiento) < 0.001) planta.crecimiento = objetivo;
+    }
   }
 
   /**
@@ -334,10 +482,13 @@
     objetivoFloracion = hayManoAbierta() ? 1 : 0;
 
     const factor = 1 - Math.exp(-VELOCIDAD_FLORACION * dt);
-    florecimiento += (objetivoFloracion - florecimiento) * factor;
 
-    if (Math.abs(objetivoFloracion - florecimiento) < 0.001) {
-      florecimiento = objetivoFloracion;
+    for (const planta of plantas) {
+      planta.florecimiento += (objetivoFloracion - planta.florecimiento) * factor;
+
+      if (Math.abs(objetivoFloracion - planta.florecimiento) < 0.001) {
+        planta.florecimiento = objetivoFloracion;
+      }
     }
   }
 
@@ -568,18 +719,22 @@
   /* ---------- Partículas ---------- */
 
   function actualizarParticulas(dt) {
-    if (intensidadSacudida > 0.12 && crecimiento > 0.05) {
-      acumuladorEmision += EMISION_MAXIMA * intensidadSacudida * dt;
+    for (const planta of plantas) actualizarParticulasDe(planta, dt);
+  }
 
-      while (acumuladorEmision >= 1 && particulas.length < MAX_PARTICULAS) {
-        emitirParticula();
-        acumuladorEmision -= 1;
+  function actualizarParticulasDe(planta, dt) {
+    if (intensidadSacudida > 0.12 && planta.crecimiento > 0.05) {
+      planta.acumuladorEmision += EMISION_MAXIMA * intensidadSacudida * dt;
+
+      while (planta.acumuladorEmision >= 1 && planta.particulas.length < MAX_PARTICULAS) {
+        emitirParticula(planta);
+        planta.acumuladorEmision -= 1;
       }
     } else {
-      acumuladorEmision = 0;
+      planta.acumuladorEmision = 0;
     }
 
-    for (const particula of particulas) {
+    for (const particula of planta.particulas) {
       // Roce: frenan rápido y quedan flotando.
       const roce = Math.exp(-1.6 * dt);
       particula.vx *= roce;
@@ -590,19 +745,20 @@
       particula.vida -= dt;
     }
 
-    particulas = particulas.filter((particula) => particula.vida > 0);
+    planta.particulas = planta.particulas.filter((particula) => particula.vida > 0);
   }
 
-  function emitirParticula() {
+  function emitirParticula(planta) {
     if (!anchoCSS || !altoCSS) return;
 
-    const base = baseDeLaPlanta(anchoCSS, altoCSS);
-    const altura = altoCSS * ALTURA_MAXIMA * crecimiento;
+    const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
+    const altura = altoCSS * planta.def.altura * planta.crecimiento;
     if (altura < 10) return;
 
     // Nacen a lo largo del tallo, con más densidad hacia las flores.
     const t = 0.35 + Math.random() * 0.7;
-    const punto = puntoDelTallo(base, altura, t);
+    const desplazamiento = altura * planta.proporcion * (planta.def.talloX - 0.5);
+    const punto = puntoDelTallo(base, altura, t, desplazamiento);
 
     const escala = altoCSS * 0.1;
     const direccion = Math.random() * Math.PI * 2;
@@ -610,7 +766,7 @@
     const vida = 0.9 + Math.random() * 1.4;
 
     // Cada una con su tamaño, su velocidad y su duración: nada de copias iguales.
-    particulas.push({
+    planta.particulas.push({
       x: punto.x + (Math.random() - 0.5) * altura * 0.18,
       y: punto.y + (Math.random() - 0.5) * altura * 0.1,
       vx: Math.cos(direccion) * rapidez,
@@ -621,12 +777,12 @@
     });
   }
 
-  function dibujarParticulas() {
-    if (particulas.length === 0) return;
+  function dibujarParticulas(planta) {
+    if (planta.particulas.length === 0) return;
 
     ctx.fillStyle = COLOR_POLEN;
 
-    for (const particula of particulas) {
+    for (const particula of planta.particulas) {
       const alfa = Math.max(0, particula.vida / particula.vidaMax);
       if (alfa <= 0.01) continue;
 
@@ -646,19 +802,20 @@
    * anclada en el suelo: la base queda fija y la flor crece hacia arriba.
    * No se recorta ni se deforma, así que la proporción original se conserva.
    */
-  function dibujarPlanta(ancho, alto, ahora) {
-    if (!imagenLista || crecimiento <= 0.004) return;
+  function dibujarPlanta(planta, ancho, alto, ahora) {
+    if (!planta.lista || planta.crecimiento <= 0.004) return;
 
-    const base = baseDeLaPlanta(ancho, alto);
-    const alturaDibujo = alto * ALTURA_MAXIMA * crecimiento;
-    const anchoDibujo = alturaDibujo * proporcionFlor;
+    const base = baseDeLaPlanta(planta.def, ancho, alto);
+    const alturaDibujo = alto * planta.def.altura * planta.crecimiento;
+    const anchoDibujo = alturaDibujo * planta.proporcion;
     const x = base.x - anchoDibujo * 0.5;
     const y = base.y - alturaDibujo;
 
     // El temblor pivota en la base, como un tallo real: no se traslada entero.
     ctx.save();
 
-    const anguloPlanta = inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora);
+    const anguloPlanta =
+      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
 
     if (Math.abs(anguloPlanta) > 0.001) {
       ctx.translate(base.x, base.y);
@@ -666,11 +823,13 @@
       ctx.translate(-base.x, -base.y);
     }
 
-    ctx.drawImage(imagenFlor, x, y, anchoDibujo, alturaDibujo);
+    ctx.drawImage(planta.imagen, x, y, anchoDibujo, alturaDibujo);
 
     // Con la mano abierta la corola se descubre; a 1 se ve la ilustración
     // completa y no hace falta enmascarar nada.
-    if (florecimiento < 0.999) revelarCorola(x, y, anchoDibujo, alturaDibujo);
+    if (planta.def.corola && planta.florecimiento < 0.999) {
+      revelarCorola(planta, x, y, anchoDibujo, alturaDibujo);
+    }
 
     ctx.restore();
   }
@@ -693,9 +852,11 @@
    * Vaivén ambiental con el viento de la escena. Es solo presentación: se suma
    * al ángulo de dibujo y no toca `inclinacion`, que sigue siendo la que manda
    * la mano. En el banco de pruebas, sin sketch.js, usa un viento suave.
+   *
+   * `faseViento` corre el reloj de cada planta para que no se muevan al unísono.
    */
-  function balanceoDelAire(ahora) {
-    const segundos = ahora * 0.001;
+  function balanceoDelAire(ahora, planta) {
+    const segundos = ahora * 0.001 + planta.def.faseViento;
     const fuerza = typeof fuerzaViento === 'number' ? limitar(fuerzaViento, 0, 1) : 0.35;
     const empuje = typeof direccionViento === 'number' ? direccionViento : 1;
 
@@ -710,16 +871,27 @@
    * Florecimiento sin tocar la ilustración: la corola se descubre desde su
    * base hacia afuera con un degradado radial. El tallo y las hojas quedan
    * siempre completos, así que la flor nunca se separa del suelo.
+   *
+   * La geometría es la de ESTA planta (`def.corola`): cada ilustración tiene
+   * su corola en otro lugar, y así una no le impone sus números a la otra.
    */
-  function revelarCorola(x, y, ancho, alto) {
-    const centroX = x + ancho * COROLA.centroX;
-    const centroY = y + alto * COROLA.centroY;
+  function revelarCorola(planta, x, y, ancho, alto) {
+    const corola = planta.def.corola;
+    const centroX = x + ancho * corola.centroX;
+    const centroY = y + alto * corola.centroY;
     const radio =
-      alto *
-      (COROLA.radioMinimo + (COROLA.radioMaximo - COROLA.radioMinimo) * florecimiento);
-    const borde = radio + alto * COROLA.suavizado;
+      alto * (corola.radioMinimo + (corola.radioMaximo - corola.radioMinimo) * planta.florecimiento);
+    const borde = radio + alto * corola.suavizado;
 
     ctx.save();
+
+    // `destination-in` borra TODO lo que la máscara no cubre, no solo el
+    // rectángulo que se rellena. En un lienzo compartido eso se llevaría
+    // puestas a las demás plantas, así que primero se acota el efecto a la
+    // caja de ESTA ilustración.
+    ctx.beginPath();
+    ctx.rect(x, y, ancho, alto);
+    ctx.clip();
 
     const degradado = ctx.createRadialGradient(centroX, centroY, 0, centroX, centroY, borde);
     degradado.addColorStop(0, 'rgba(0, 0, 0, 1)');
@@ -734,9 +906,9 @@
     // El tallo y las hojas no florecen: se repintan completos.
     ctx.globalCompositeOperation = 'source-over';
     ctx.beginPath();
-    ctx.rect(x, y + alto * COROLA.juntura, ancho, alto * (1 - COROLA.juntura));
+    ctx.rect(x, y + alto * corola.juntura, ancho, alto * (1 - corola.juntura));
     ctx.clip();
-    ctx.drawImage(imagenFlor, x, y, ancho, alto);
+    ctx.drawImage(planta.imagen, x, y, ancho, alto);
 
     ctx.restore();
   }
@@ -745,21 +917,25 @@
    * Punto del tallo en t = 0 (base) .. 1 (punta). El tallo de la ilustración
    * es recto y vertical, así que las partículas nacen exactamente sobre él.
    */
-  function puntoDelTallo(base, altura, t) {
-    return { x: base.x, y: base.y - altura * t };
+  function puntoDelTallo(base, altura, t, desplazamientoX) {
+    return { x: base.x + desplazamientoX, y: base.y - altura * t };
   }
 
   /**
    * Dónde nace la planta: sobre el borde real de la capa de suelo cercana.
    * bordeDeSuelo() y CAPAS_SUELO vienen de sketch.js, así que la base coincide
-   * con la tierra dibujada y no queda flotando.
+   * con la tierra dibujada y no queda flotando. La x y la altura salen de la
+   * entrada del catálogo, no de un valor global.
    */
-  function baseDeLaPlanta(ancho, alto) {
-    const x = ancho * 0.5;
+  function baseDeLaPlanta(def, ancho, alto) {
+    const x = ancho * def.x;
     const horizonte = alto * 0.54;
 
     if (typeof bordeDeSuelo === 'function' && typeof CAPAS_SUELO !== 'undefined') {
-      return { x, y: bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + alto * 0.01 };
+      return {
+        x,
+        y: bordeDeSuelo(x, CAPAS_SUELO[def.capaSuelo], horizonte) + alto * def.separacionSuelo,
+      };
     }
 
     return { x, y: horizonte + alto * 0.28 };
@@ -774,8 +950,8 @@
     const elemento = document.getElementById('crecimiento-estado');
     if (!elemento) return;
 
-    const porcentaje = Math.round(crecimiento * 100);
-    const floracion = Math.round(florecimiento * 100);
+    const porcentaje = Math.round(principal.crecimiento * 100);
+    const floracion = Math.round(principal.florecimiento * 100);
     const texto = `Crecimiento: ${porcentaje}% · Floración: ${floracion}%`;
     if (elemento.textContent !== texto) elemento.textContent = texto;
 
@@ -790,14 +966,30 @@
   }
 
   // Acceso de solo lectura para comprobar el mapeo desde la consola.
+  // Los métodos históricos hablan de la planta central (la que lee sketch.js);
+  // `plantas()` y `crecimientoDe()` permiten mirar cualquiera del catálogo.
   window.plantaDebug = {
     nivelDesdeAltura: (y) => nivelDesdeAltura(y),
-    crecimiento: () => crecimiento,
+    crecimiento: () => principal.crecimiento,
     objetivo: () => objetivo,
-    florecimiento: () => florecimiento,
+    florecimiento: () => principal.florecimiento,
     sacudida: () => intensidadSacudida,
     inclinacion: () => inclinacion,
-    particulas: () => particulas.length,
+    particulas: () => principal.particulas.length,
+    plantas: () =>
+      plantas.map((planta) => ({
+        id: planta.def.id,
+        archivo: planta.def.archivo,
+        cargada: planta.lista,
+        crecimiento: planta.crecimiento,
+        florecimiento: planta.florecimiento,
+        particulas: planta.particulas.length,
+        proporcion: planta.proporcion,
+      })),
+    crecimientoDe: (id) => {
+      const planta = plantas.find((candidata) => candidata.def.id === id);
+      return planta ? planta.crecimiento : null;
+    },
     // Permite probar la emisión de partículas sin un canvas real.
     dimensiones: (ancho, alto) => {
       anchoCSS = ancho;

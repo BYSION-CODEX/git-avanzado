@@ -6,9 +6,11 @@ sin build, sin package manager, sin tests.
 ## Estado
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
-gestos (mano abierta / puño) + planta que crece y florece + paisaje animado por
-viento + árboles que reverdecen con ese crecimiento mientras haya manos en
-cuadro + personaje que camina en el fondo y se entristece. Del cuerpo se leen
+gestos (mano abierta / puño) + dos plantas que crecen y florecen (la central y
+la morada de la izquierda, con el mismo catálogo para sumar más) + paisaje
+animado por viento + árboles que reverdecen con ese crecimiento mientras haya
+manos en cuadro + personaje que camina en el fondo, se entristece y celebra con
+las manos arriba cuando la planta crece. Del cuerpo se leen
 nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
 puntos de cada una.
 
@@ -45,13 +47,15 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `style.css` | todos los estilos de la interfaz |
 | `sketch.js` | `setup()` / `draw()` de p5.js en modo global, escenario y viento, cámara, Body Pose, Hand Pose y gestos |
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
-| `planta.js` | crecimiento de la planta con el gesto de puño, en su propia capa |
+| `planta.js` | catálogo de plantas: crecimiento, floración, sacudida e inclinación, en su propia capa |
 | `personaje.png` | sprite del personaje que camina en el fondo (**asset obligatorio**: sin él no aparece) |
-| `flor.png` | ilustración de la planta (PNG con transparencia; **asset obligatorio**: sin él la planta no aparece) |
+| `personaje-feliz.png` | pose feliz del personaje, con las manos arriba (opcional: sin ella el estado feliz usa `personaje.png`) |
+| `flor.png` | ilustración de la planta central (PNG con transparencia; **asset obligatorio**: sin él la planta no aparece) |
+| `planta-morada.png` | ilustración de `planta_morada`, a la izquierda de la central (281×528, **sin alfa**: el fondo blanco se recorta al cargar; asset obligatorio) |
 
-Cinco archivos de código y dos imágenes (el sprite del personaje y la flor). Si
-aparece un módulo nuevo, registrarlo en `index.html` en el orden correcto y
-documentarlo acá.
+Cinco archivos de código y cuatro imágenes (el personaje con su pose feliz
+opcional y las dos plantas). Si aparece un módulo nuevo, registrarlo en
+`index.html` en el orden correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
@@ -148,7 +152,7 @@ parte en dos capas:
   de llegar al último nivel, y por eso el follaje se cuelga de *todos* los nudos
   y no de un nivel fijo.
 
-## Personaje (`sketch.js` + `personaje.png`)
+## Personaje (`sketch.js` + `personaje.png` + `personaje-feliz.png`)
 
 - Vive en `sketch.js`, no en una capa propia: tiene que quedar **entre** los
   árboles del plano medio y los cercanos. Por eso `dibujarArbolesViento(t, plano)`
@@ -158,17 +162,26 @@ parte en dos capas:
   `setup()` es sincrónico a propósito. Se carga con callbacks; si el archivo
   falta, el paisaje sigue andando y solo se pierde el personaje (error en
   consola con prefijo `[personaje]`).
-- **El fondo claro del sprite se recorta al cargar** (`recortarFondoClaro`):
+- **Dos poses, no cuadros**: `personaje.png` (caminando/triste) y
+  `personaje-feliz.png` (manos arriba). La feliz es **opcional**: si falta, el
+  estado feliz usa la pose normal con el salto, pero los brazos quedan bajos.
+  Ambas se cargan con callbacks y se recortan igual.
+- **El fondo claro de cada sprite se recorta al cargar** (`recortarFondoClaro`):
   inunda desde los bordes y borra solo lo claro CONECTADO al borde. Un umbral
   global borraría también los ojos blancos del personaje. `PERSONAJE.toleranciaFondo`
   en 0 desactiva el recorte (útil si el PNG ya viene transparente).
-- Es un sprite único: no hay cuadros. El caminar es un vaivén + un rebote por
-  paso, y la tristeza es un cabeceo (`inclinacionTriste`) más un `scaleY`
-  (`hundimiento`), todo suavizado con `1 - exp(-k·dt)` para que no haya saltos
-  entre estados.
-- Ciclo: `caminando` → `mirando` (frena antes del árbol más alto del plano medio)
-  → `triste` (cabecea y larga una lágrima cada `cadaLagrima` s) → `caminando` →
-  sale por la derecha y reingresa por la izquierda.
+- **Felicidad**: cuando `plantaDebug.crecimiento()` cruza
+  `PERSONAJE.crecimientoFeliz` (0.05), el personaje pasa a `feliz` y ya no vuelve
+  al ciclo triste: la planta se queda, así que la alegría también. Celebra
+  caminando, con un salto y un vaivén más amplios (`saltoFeliz`,
+  `balanceoFeliz`), y sin lágrimas.
+- El caminar es un vaivén + un rebote por paso; la tristeza es un cabeceo
+  (`inclinacionTriste`) más un `scaleY` (`hundimiento`). Todo suavizado con
+  `1 - exp(-k·dt)` para que no haya saltos entre estados.
+- Ciclo normal (antes de que crezca la planta): `caminando` → `mirando` (frena
+  antes del árbol más alto del plano medio) → `triste` (cabecea y larga una
+  lágrima cada `cadaLagrima` s) → `caminando` → sale por la derecha y reingresa
+  por la izquierda. Con la planta crecida, el ciclo se reemplaza por `feliz`.
 - `miradaHecha` es obligatorio: sin esa bandera, al retomar la caminata ya está
   parado sobre la marca de parada y volvería a frenar en el mismo árbol para
   siempre.
@@ -176,11 +189,15 @@ parte en dos capas:
   flota en línea recta.
 - Decidir la escala acá: `PERSONAJE.altura` (fracción del alto del lienzo) y
   `PERSONAJE.velocidad` (fracción del alto por segundo).
+- La pose feliz se dibuja con **su propia proporción** (`imagen.width /
+  imagen.height`): nunca se estira para calzar con la normal. Si la pose feliz
+  tiene los brazos por encima de la cabeza, la imagen es más alta y el cuerpo
+  queda más chico: se corrige con `PERSONAJE.escalaFeliz`.
 - `PERSONAJE.ojo` (fracciones 0..1 de la imagen) ubica la lágrima. Si se recorta
   o se cambia el sprite, hay que moverlo.
-- **El sprite tiene que estar recortado al contenido**, con los pies tocando el
-  borde inferior: la imagen se ancla por su borde inferior contra el suelo, así
-  que cualquier margen transparente abajo lo hace flotar. El `personaje.png`
+- **Cada sprite tiene que estar recortado al contenido**, con los pies tocando
+  el borde inferior: la imagen se ancla por su borde inferior contra el suelo,
+  así que cualquier margen transparente abajo lo hace flotar. El `personaje.png`
   actual está recortado (758×1271, con alfa).
 
 ## Modo depuración (`debug-pose.js`)
@@ -309,27 +326,52 @@ parte en dos capas:
   dedo a 90° → 0.47 (indefinido), y una serie temblando entre 0.56 y 0.64 se
   queda en `abierta` sin cambiar de estado.
 
-## Planta (`planta.js`)
+## Plantas (`planta.js`)
 
 - **Capa propia, no el canvas de p5.** El paisaje está cacheado con `noLoop()`;
   redibujar sus ~1600 trazos por frame para animar el crecimiento lo haría
   inviable. `#planta-overlay` es un canvas transparente encima del de p5, mismo
   rectángulo, así las coordenadas coinciden sin conversiones.
 - Por eso `sketch.js` **no** se tocó: ni `setup()`, ni `draw()`, ni el paisaje.
-- **La flor es una ilustración, no un dibujo por código.** `flor.png` es la
-  fuente única: se dibuja tal cual, con sus colores, pétalos y proporciones.
-  `planta.js` no redibuja nada; solo la escala, la inclina, la sacude y la
-  revela. El PNG tiene que venir recortado al contenido y con el tallo tocando
-  el borde inferior: la imagen se ancla por su base contra el suelo.
+- **Un catálogo, no un caso especial.** `PLANTAS` en `planta.js` es una lista de
+  plantas; cada entrada define `id`, `archivo`, `x`, `altura`, `capaSuelo`,
+  `separacionSuelo`, `talloX`, `faseViento` y `corola`. La interacción
+  —crecimiento, floración, sacudida, inclinación y viento— es **una sola** y la
+  comparten todas. Para sumar otra planta alcanza con agregar un objeto a la
+  lista; no hay que tocar ninguna interacción.
+- **Cada planta tiene su propio estado**: imagen, proporción, `crecimiento`,
+  `florecimiento` y partículas. El objetivo lo calculan las manos una vez y cada
+  planta lo alcanza con su suavizado, así no comparten la variable de dibujo.
+- **Sumar otra planta**: (1) copiar el PNG recortado con el nombre
+  `planta-<color>.png`; (2) agregar un objeto a `PLANTAS` con `id`, `archivo`,
+  `x`, `altura` y su `corola`; (3) nada más. No hace falta tocar gestos,
+  `sketch.js`, `index.html` ni la cámara. El orden de la lista es el de dibujo:
+  la primera queda debajo.
+- `planta-<color>.png` es la fuente única de cada ilustración: se dibuja tal
+  cual, con sus colores, pétalos y proporciones. `planta.js` no redibuja nada;
+  solo la escala, la inclina, la sacude y la revela. El PNG tiene que venir
+  recortado al contenido y con el tallo tocando el borde inferior: la imagen se
+  ancla por su base contra el suelo.
 - **Crecimiento = escala uniforme anclada en la base**: el alto dibujado es
-  `alto * ALTURA_MAXIMA * crecimiento` y el ancho sale de la proporción real del
-  PNG (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la
-  base queda clavada sobre el suelo mientras la flor crece hacia arriba.
-- `ALTURA_MAXIMA` (0.42) es la fracción del alto del lienzo que ocupa la flor al
-  100%; la posición horizontal es el centro del lienzo, igual que antes.
+  `alto * altura * crecimiento` y el ancho sale de la proporción real del PNG
+  (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la base
+  queda clavada sobre el suelo mientras la planta crece hacia arriba.
+- `altura` (fracción del alto del lienzo al 100%) y `x` (fracción del ancho) son
+  de cada planta: la central va en `0.5` / `0.42` y la morada en `0.25` / `0.36`.
 - La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
-  no está lista no se dibuja; si falta el archivo, el resto de la experiencia
-  sigue andando y solo se pierde la planta.
+  no está lista esa planta no se dibuja; si falta el archivo, el resto de la
+  experiencia sigue andando y solo se pierde esa planta.
+- **`toleranciaFondo`**: si el PNG no trae alfa (como `planta-morada.png`, que
+  viene en RGB con fondo blanco), se recorta al cargar reutilizando
+  `recortarFondoClaro()` de `sketch.js` —el mismo algoritmo del personaje, un
+  solo lugar—. Inunda desde los bordes, así los blancos internos de la
+  ilustración no se borran. Después se limpia el blanco **puro** que quedó
+  encerrado entre las campanas, que ninguna inundación desde el borde alcanza.
+  En `0` se desactiva (`flor.png` ya trae alfa).
+- **Contrato con `sketch.js`**: `plantaDebug.crecimiento()` y
+  `plantaDebug.florecimiento()` hablan de la planta **central** (la primera del
+  catálogo). El follaje y el personaje leen de ahí; por eso `principal` es
+  `PLANTAS[0]` y no se reordena la lista sin querer.
 - Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
   y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
 - Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
@@ -340,10 +382,11 @@ parte en dos capas:
   más alto.
 - La animación usa amortiguación exponencial (`1 - exp(-k*dt)`), no un lerp con
   alfa fijo: el crecimiento es fluido y no depende del framerate.
-- La base se ancla con `bordeDeSuelo()` y `CAPAS_SUELO` de `sketch.js`, así la
-  planta nace sobre la tierra dibujada y no flota.
+- La base se ancla con `bordeDeSuelo()` y `CAPAS_SUELO` de `sketch.js`, en la
+  capa que declara cada planta, así nace sobre la tierra dibujada y no flota.
 - `window.plantaDebug.nivelDesdeAltura(y)` expone el mapeo para comprobarlo
-  desde la consola.
+  desde la consola; `plantaDebug.plantas()` y `crecimientoDe(id)` muestran el
+  estado de cada una.
 - Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
   0.20 → 100%, y el mapeo es monótono en toda la banda.
 
@@ -357,16 +400,21 @@ parte en dos capas:
 - `VELOCIDAD_FLORACION` (2.6) es menor que `VELOCIDAD_CRECIMIENTO` (4.5): la
   flor abre más lento que el crecimiento, y se siente natural.
 - **La corola se revela, no se deforma.** Con la mano abierta un degradado
-  radial (`COROLA` en `planta.js`, en fracciones del alto de la ilustración)
+  radial (`corola` de cada entrada, en fracciones del alto de la ilustración)
   descubre la flor desde su base hacia afuera: `radioMinimo` es el capullo y
   `radioMaximo` cubre la corola entera. Los pétalos nunca se estiran ni se
   comprimen; se dejan de tapar.
-- **El tallo y las hojas no florecen.** Debajo de `COROLA.juntura` la imagen se
+- **El tallo y las hojas no florecen.** Debajo de `corola.juntura` la imagen se
   repinta completa, así la flor siempre queda unida al suelo y el revelado no
   puede cortar el tallo.
 - Técnica: `globalCompositeOperation = 'destination-in'` con el degradado, y
   después `source-over` + `clip` para repintar la parte baja. A `florecimiento`
   ≥ 0.999 se saltea la máscara y se ve la ilustración original completa.
+- **`destination-in` borra TODO lo que la máscara no cubre**, no solo el
+  rectángulo que se rellena. Con una sola planta no se notaba; con varias se
+  llevaba puestas las que ya estaban dibujadas. Por eso el revelado empieza con
+  un `clip()` a la caja de su propia ilustración: si se agrega una planta, no
+  hay que tocar nada, pero si se cambia la técnica, esa es la razón del clip.
 - Verificado en Node simulando 60 fps: puño a y=0.45 → crecimiento 0.75;
   luego mano abierta → floración 0.99 y **crecimiento sigue en 0.75**; al cerrar
   → floración 0 y altura intacta; sin manos → se cierra solo.
