@@ -117,6 +117,32 @@
         juntura: 0.36,
       },
     },
+    {
+      id: 'planta_naranja',
+      archivo: 'planta-naranja.png',
+      // A la derecha de la central, misma altura que la morada: el jardín queda
+      // simétrico y ninguna de las dos invade el centro.
+      x: 0.76,
+      altura: 0.36,
+      capaSuelo: 2,
+      separacionSuelo: 0.01,
+      // Tallo recto y centrado en la ilustración.
+      talloX: 0.5,
+      faseViento: 2.8,
+      // También viene en RGB sin alfa: mismo recorte al cargar.
+      toleranciaFondo: 28,
+      // Cinco flores en abanico sobre el tercio superior. El revelado nace en
+      // el centro del abanico y `juntura` corta por debajo de la flor más baja,
+      // así el tallo nunca se despega del suelo.
+      corola: {
+        centroX: 0.5,
+        centroY: 0.24,
+        radioMinimo: 0.1,
+        radioMaximo: 0.48,
+        suavizado: 0.03,
+        juntura: 0.42,
+      },
+    },
   ];
 
   /* ---------- Sacudida ---------- */

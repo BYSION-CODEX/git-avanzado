@@ -6,8 +6,9 @@ sin build, sin package manager, sin tests.
 ## Estado
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
-gestos (mano abierta / puño) + dos plantas que crecen y florecen (la central y
-la morada de la izquierda, con el mismo catálogo para sumar más) + paisaje
+gestos (mano abierta / puño) + tres plantas que crecen y florecen (la central,
+la morada de la izquierda y la naranja de la derecha, con el mismo catálogo para
+sumar más) + paisaje
 animado por viento + árboles que reverdecen con ese crecimiento mientras haya
 manos en cuadro + personaje que camina en el fondo, se entristece y celebra con
 las manos arriba cuando la planta crece. Del cuerpo se leen
@@ -52,9 +53,10 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `personaje-feliz.png` | pose feliz del personaje, con las manos arriba (opcional: sin ella el estado feliz usa `personaje.png`) |
 | `flor.png` | ilustración de la planta central (PNG con transparencia; **asset obligatorio**: sin él la planta no aparece) |
 | `planta-morada.png` | ilustración de `planta_morada`, a la izquierda de la central (281×528, **sin alfa**: el fondo blanco se recorta al cargar; asset obligatorio) |
+| `planta-naranja.png` | ilustración de `planta_naranja`, a la derecha de la central (249×609, **sin alfa**: mismo recorte al cargar; asset obligatorio) |
 
-Cinco archivos de código y cuatro imágenes (el personaje con su pose feliz
-opcional y las dos plantas). Si aparece un módulo nuevo, registrarlo en
+Cinco archivos de código y cinco imágenes (el personaje con su pose feliz
+opcional y las tres plantas). Si aparece un módulo nuevo, registrarlo en
 `index.html` en el orden correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
@@ -357,7 +359,9 @@ parte en dos capas:
   (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la base
   queda clavada sobre el suelo mientras la planta crece hacia arriba.
 - `altura` (fracción del alto del lienzo al 100%) y `x` (fracción del ancho) son
-  de cada planta: la central va en `0.5` / `0.42` y la morada en `0.25` / `0.36`.
+  de cada planta: la central va en `0.5` / `0.42`, la morada en `0.25` / `0.36` y
+  la naranja en `0.76` / `0.36`. Cada `faseViento` distinta evita que las tres se
+  mezan al unísono.
 - La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
   no está lista esa planta no se dibuja; si falta el archivo, el resto de la
   experiencia sigue andando y solo se pierde esa planta.
