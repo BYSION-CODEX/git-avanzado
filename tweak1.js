@@ -1,0 +1,11 @@
+﻿const fs=require('fs');
+let t=fs.readFileSync('planta.js','utf8');
+const rep=(a,b)=>{ if(!t.includes(a)) throw new Error('missing: '+a.slice(0,50)); t=t.replace(a,b); };
+rep("      // A la izquierda del jardín, más alta que la central para que se lea\r\n      // como el ejemplar que abre la escena.\r\n      x: 0.155,\r\n      altura: 0.5,", "      // Centrada y a escala de protagonista: es la única planta del catálogo.\r\n      x: 0.5,\r\n      altura: 0.44,");
+rep("hojaBaseIzquierda: { archivo: 'orquidea-hoja-base-izquierda.png', ancho: 0.30, ax: 0.95, ay: 0.68 }", "hojaBaseIzquierda: { archivo: 'orquidea-hoja-base-izquierda.png', ancho: 0.22, ax: 0.95, ay: 0.68 }");
+rep("hojaBaseDerecha: { archivo: 'orquidea-hoja-base-derecha.png', ancho: 0.32, ax: 0.05, ay: 0.68 }", "hojaBaseDerecha: { archivo: 'orquidea-hoja-base-derecha.png', ancho: 0.24, ax: 0.05, ay: 0.68 }");
+rep("hojaPequena: { archivo: 'orquidea-hoja-pequena.png', ancho: 0.23, ax: 0.06, ay: 0.97 }", "hojaPequena: { archivo: 'orquidea-hoja-pequena.png', ancho: 0.16, ax: 0.06, ay: 0.97 }");
+rep("capulloPrincipal: { archivo: 'orquidea-capullo-principal.png', ancho: 0.115, ax: 0.5, ay: 0.95 }", "capulloPrincipal: { archivo: 'orquidea-capullo-principal.png', ancho: 0.095, ax: 0.455, ay: 1 }");
+rep("    /** Segundos que tardan las ramas y la flor azul en desplegarse. */\r\n    ramasSegundos: 1.2,", "    /** Segundos que tardan las ramas y la flor azul en desplegarse. */\r\n    ramasSegundos: 1.2,\r\n    /** Cierre: más rápido que la apertura, para que no quede deformada. */\r\n    cierreSegundos: 1,\r\n    cierreRamasSegundos: 0.8,");
+fs.writeFileSync('planta.js',t);
+console.log('config ok');

@@ -6,15 +6,17 @@ sin build, sin package manager, sin tests.
 ## Estado
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
-gestos (mano abierta / puño) + cuatro plantas que crecen y florecen (la central,
-la morada a la izquierda, la naranja a la derecha y una azul pequeña en el
-segundo plano, con el mismo catálogo para sumar más) + un árbol colorido
-interactivo en el segundo plano + paisaje
+gestos (mano abierta / puño) + **una única planta interactiva: la orquídea**
+(centrada, montada con 20 piezas) + paisaje
 animado por viento + árboles que reverdecen con ese crecimiento mientras haya
 manos en cuadro + personaje que camina en el fondo, se entristece y celebra con
-las manos arriba cuando la planta crece. Del cuerpo se leen
+las manos arriba cuando la orquídea crece. Del cuerpo se leen
 nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
 puntos de cada una.
+
+> Las cinco entradas anteriores del catálogo (`arbol_colorido`, `planta_azul`,
+> `planta_central`, `planta_morada`, `planta_naranja`) se retiraron de
+> `PLANTAS`. Sus PNG siguen en la carpeta pero ya no se cargan ni se dibujan.
 
 Estados de la cámara en `sketch.js`, reflejados en `data-estado` del contenedor:
 `iniciando` → `lista` → o `error`. Ojo: `createCapture` **solo llama al callback
@@ -52,15 +54,17 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `planta.js` | catálogo de plantas: crecimiento, floración, sacudida e inclinación, en su propia capa |
 | `personaje.png` | sprite del personaje que camina en el fondo (**asset obligatorio**: sin él no aparece) |
 | `personaje-feliz.png` | pose feliz del personaje, con las manos arriba (opcional: sin ella el estado feliz usa `personaje.png`) |
-| `flor.png` | ilustración de la planta central (PNG con transparencia; **asset obligatorio**: sin él la planta no aparece) |
-| `planta-morada.png` | ilustración de `planta_morada`, a la izquierda de la central (281×528, **sin alfa**: el fondo blanco se recorta al cargar; asset obligatorio) |
-| `planta-naranja.png` | ilustración de `planta_naranja`, a la derecha de la central (249×609, **sin alfa**: mismo recorte al cargar; asset obligatorio) |
-| `planta-azul.png` | ilustración de `planta_azul`, en el segundo plano a la derecha (249×601, **sin alfa**: mismo recorte al cargar) |
-| `arbol-colorido.png` | ilustración de `arbol_colorido`, el árbol interactivo del segundo plano (513×521, **sin alfa**: mismo recorte al cargar) |
+| `flor.png` | ilustración de la ex planta central. **Fuera del catálogo**: ya no se carga |
+| `planta-morada.png` | ilustración de la ex `planta_morada`. **Fuera del catálogo**: ya no se carga |
+| `planta-naranja.png` | ilustración de la ex `planta_naranja`. **Fuera del catálogo**: ya no se carga |
+| `planta-azul.png` | ilustración de la ex `planta_azul`. **Fuera del catálogo**: ya no se carga |
+| `arbol-colorido.png` | ilustración del ex `arbol_colorido`. **Fuera del catálogo**: ya no se carga |
+| `orquidea-*.png` | las **20 piezas** del montaje de `orquidea` (tallo, hojas, capullos, pétalos, corazón, pistilo, ramas y flor azul). Todas con alfa; ver «Orquídea» |
 
-Cinco archivos de código y siete imágenes (el personaje con su pose feliz
-opcional, las cuatro plantas y el árbol colorido del fondo). Si aparece un
-módulo nuevo, registrarlo en `index.html` en el orden correcto y documentarlo acá.
+Cinco archivos de código y 27 imágenes en disco: el personaje con su pose feliz
+opcional, las 20 piezas de la orquídea y seis PNG de las plantas retiradas que
+ya no se cargan. Si aparece un módulo nuevo, registrarlo en `index.html` en el
+orden correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
@@ -383,10 +387,10 @@ parte en dos capas:
   encerrado entre las campanas, que ninguna inundación desde el borde alcanza.
   En `0` se desactiva (`flor.png` ya trae alfa).
 - **Contrato con `sketch.js`**: `plantaDebug.crecimiento()` y
-  `plantaDebug.florecimiento()` hablan de la planta **central**, marcada con
-  `principal: true` en el catálogo. El follaje y el personaje leen de ahí; por
-  eso la central no se saca de la lista y su `principal` no se mueve, aunque
-  cambie el orden de dibujo.
+  `plantaDebug.florecimiento()` hablan de la planta principal (la que declara
+  `principal: true`, o la última del catálogo si ninguna lo hace). Hoy la única
+  entrada es la orquídea, así que su crecimiento alimenta el follaje y al
+  personaje; su `florecimiento` es la apertura real de la flor.
 - Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
   y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
 - Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
@@ -405,27 +409,75 @@ parte en dos capas:
 - Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
   0.20 → 100%, y el mapeo es monótono en toda la banda.
 
-### Árbol colorido: paisaje interactivo, no capa de plantas
+### Orquídea: montaje de piezas y flor reversible
 
-- Es una entrada más del catálogo (`arbol_colorido`), así que **comparte toda la
-  interacción**: crece con el puño, florece con la mano abierta, se sacude, se
-  inclina y se mece con el viento. No existe una segunda lógica de gestos.
-- **`paisaje: true` solo cambia quién dibuja.** `#planta-overlay` se dibuja por
-  encima del canvas de p5, así que ahí el árbol quedaría DELANTE del personaje.
-  Las entradas de paisaje se saltean en el bucle del overlay (incluidas sus
-  partículas) y las pinta `sketch.js` llamando a
-  `plantaDebug.dibujarPaisaje(contexto, ancho, alto, ahora)`, que dibuja esas
-  entradas en el contexto 2D que se le pase, con las mismas coordenadas lógicas.
-- `sketch.js` le presta un `p5.Graphics` del tamaño del lienzo
-  (`capaArbolPaisaje`, con `pixelDensity(1)` y liberado en `liberarEscenario()`)
-  y lo compone en `dibujarEscenario()` entre los árboles lejanos y los medios:
-  detrás del personaje, de los árboles medios y de las plantas.
-- Si el árbol no creció, `dibujarPaisaje()` devuelve `false` y la escena se
-  saltea el blit de un buffer vacío en ese frame.
-- `corola` es el revelado de las tres copas (nace donde el tronco se abre) y
-  `juntura` repinta el tronco entero por debajo, así nunca se separa del suelo.
-- Para sumar otro elemento de fondo alcanza con otra entrada con `paisaje: true`:
-  no hay que tocar `sketch.js` ni la interacción.
+- Es **la única entrada** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.44`,
+  `capaSuelo: 2`), centrada en la composición. No es una ilustración única:
+  `personalizado: 'orquidea'` desvía el dibujo a `dibujarOrquidea()`. La
+  interacción compartida —crecimiento, inclinación, sacudida, viento y
+  partículas— es la misma; lo propio es el montaje y su estado.
+- **20 piezas** en `ORQUIDEA.piezas`, en fracciones de
+  `full = alto del lienzo * 0.44`. Cada pieza declara `ancho`, `ax`/`ay` (el
+  punto que se clava en el esqueleto, 0..1) y su archivo `orquidea-*.png`. Se
+  cargan con callbacks; la planta aparece cuando terminaron todas, y una pieza
+  faltante solo se saltea.
+- **La base no se mueve.** Las dos hojas base se dibujan fuera del grupo que
+  gira y son chicas (0.22 / 0.24 de `full`). El resto (tallo, hojas, flor y
+  ramas) pivota en `baseDeLaPlanta()`, así el balanceo del aire y la inclinación
+  nacen del suelo.
+- **El tallo se estira con el crecimiento**, no la planta entera: entre
+  `talloMinimo` 0.26 y `talloMaximo` 0.76 de `full`. El **capullo principal se
+  ancla en la punta del tallo** (`ax 0.455`, `ay 1`), no en el centro de la
+  flor: así queda pegado al borde del tallo. A crecimiento 0 se ven las hojas
+  base, el tallo corto y el capullo.
+- **La flor es reversible**, no acumulativa. `apertura` (0..1) va a 1 **solo si
+  el tallo está en la punta (`crecimiento >= 0.985`) y hay una mano abierta**;
+  en cualquier otro caso va a 0. Por eso:
+  - con el puño en la punta la planta queda crecida pero **con el capullo
+    cerrado**;
+  - al abrir la mano en la punta se abre **pétalo por pétalo** y se despliega
+    la hoja alta;
+  - si se cierra la mano, o si el puño baja, la flor se cierra y vuelve a ser
+    capullo (no se estira sobre un tallo más corto).
+  El cierre es más rápido que la apertura (`cierreSegundos` 1 s contra
+  `aperturaSegundos` 1.8 s).
+- **Ramas**: `ramas` (0..1) sigue la misma lógica reversible. Sube solo con
+  `apertura >= 0.33`, mano abierta y tallo en la punta; baja cuando la flor se
+  cierra. Al desplegarse aparecen las dos ramas, la flor azul, el capullo
+  lateral y la hoja pequeña (a la **izquierda** de la base y chica, 0.16 de
+  `full`).
+- **Pétalos individuales**: los cinco pétalos de la flor principal están en
+  `ORQUIDEA.petalos`, cada uno con su retardo, su giro de cierre y su fase de
+  vaivén. Se dibujan anclados en su unión, así la flor se abre desde el centro
+  y después respira. El corazón y el pistilo entran al final.
+- **Flor azul**: `orquidea-flor-azul-atras.png` tiene tres pétalos **separados**
+  entre sí; `ORQUIDEA.azulAtrasRecortes` guarda sus tres recortes y cada uno
+  gira por separado. Los dos frontales están unidos por el centro
+  (`orquidea-flor-azul-petalos.png`) y se animan como una unidad, tal como
+  indican los recortes.
+- **Ramas y flores siguen su unión**: `dibujarRama()` escala de forma uniforme,
+  ancla en el extremo inferior y gira para que el extremo superior caiga en la
+  punta. La flor azul y el capullo lateral usan esa misma punta con
+  `puntaConVaiven()`, así nunca se separan.
+- **Sin reinicio previo en el proyecto**: no había teclado, botón ni gesto de
+  reinicio. Se agregó `plantaDebug.reiniciar()`, que devuelve la orquídea al
+  estado de una carga limpia. Recargar la página también reinicia, porque no se
+  persiste nada.
+- **Comprobación sin cámara**: `plantaDebug.orquidea()` devuelve
+  `{ cargada, piezas, crecimiento, llegoArriba, apertura, ramas }` y
+  `plantaDebug.paso(dt)` simula frames. Con `window.obtenerManos` intervenido se
+  verificó: puño abajo → 10% y capullo; puño en la punta → `apertura 0` con
+  `ramas 0`; mano abierta en la punta → `apertura 1` y `ramas 1`; cerrar la
+  mano → `apertura 0` y `ramas 0`; bajar el puño → capullo; abrir antes de
+  subir → todo en 0; `reiniciar()` → todo en 0. `plantas()` devuelve solo la
+  orquídea.
+
+### Árbol colorido: mecanismo retirado del catálogo
+
+- El mecanismo de `paisaje: true` sigue existiendo en `planta.js` y
+  `sketch.js`, pero **ya no hay ninguna entrada que lo use**: `arbol_colorido`
+  se retiró del catálogo. Si se vuelve a agregar, `sketch.js` lo compone en su
+  capa viva detrás del personaje.
 
 ### Florecimiento
 

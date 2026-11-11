@@ -44,6 +44,96 @@
   /** El florecimiento va más lento que el crecimiento: se siente natural. */
   const VELOCIDAD_FLORACION = 2.6;
 
+  /* ---------- Orquídea: piezas y montaje ---------- */
+
+  /**
+   * Geometría del montaje, en fracciones de `full` (el alto máximo de la
+   * orquídea = `alto del lienzo * def.altura`). Los números salieron de la
+   * lámina de referencia de los tres estados.
+   *
+   * `ancho` es el ancho dibujado de la pieza; `ax`/`ay` es el punto de esa
+   * pieza que se clava en el esqueleto (0..1, con origen arriba a la
+   * izquierda). Así una hoja gira desde su base y un pétalo desde su unión.
+   */
+  const ORQUIDEA = {
+    /** El tallo crece entre estos dos largos (fracciones de `full`). */
+    talloMinimo: 0.26,
+    talloMaximo: 0.76,
+    /** El tallo nativo se angosta: se dibuja más fino que su proporción. */
+    talloAngosto: 0.5,
+    /** El tallo nativo ocupa 0.82 de su ancho en la punta y 0.516 en la base. */
+    talloPunta: 0.82,
+    talloBase: 0.516,
+    /** La flor se apoya apenas por encima de la punta del tallo. */
+    florSobrePunta: 0.045,
+    /** Segundos que tarda la flor principal en abrirse entera. */
+    aperturaSegundos: 1.8,
+    /** Segundos que tardan las ramas y la flor azul en desplegarse. */
+    ramasSegundos: 1.2,
+    /** Cierre: más rápido que la apertura, para que no quede deformada. */
+    cierreSegundos: 1,
+    cierreRamasSegundos: 0.8,
+    /** Las ramas arrancan cuando la flor principal ya lleva un tercio. */
+    ramasDesdeApertura: 0.33,
+    piezas: {
+      tallo: { archivo: 'orquidea-tallo.png' },
+      hojaBaseIzquierda: { archivo: 'orquidea-hoja-base-izquierda.png', ancho: 0.22, ax: 0.95, ay: 0.68 },
+      hojaBaseDerecha: { archivo: 'orquidea-hoja-base-derecha.png', ancho: 0.24, ax: 0.05, ay: 0.68 },
+      hojaAlta: { archivo: 'orquidea-hoja-alta.png', ancho: 0.36, ax: 0.06, ay: 0.97 },
+      hojaPequena: { archivo: 'orquidea-hoja-pequena.png', ancho: 0.16, ax: 0.06, ay: 0.97 },
+      capulloPrincipal: { archivo: 'orquidea-capullo-principal.png', ancho: 0.095, ax: 0.455, ay: 1 },
+      capulloLateral: { archivo: 'orquidea-capullo-lateral.png', ancho: 0.075, ax: 0.5, ay: 0.5 },
+      petaloSuperior: { archivo: 'orquidea-petalo-superior.png', ancho: 0.205, ax: 0.5, ay: 0.97 },
+      petaloFrontalIzquierdo: { archivo: 'orquidea-petalo-frontal-izquierdo.png', ancho: 0.205, ax: 0.92, ay: 0.5 },
+      petaloFrontalDerecho: { archivo: 'orquidea-petalo-frontal-derecho.png', ancho: 0.205, ax: 0.08, ay: 0.5 },
+      petaloInferiorIzquierdo: { archivo: 'orquidea-petalo-inferior-izquierdo.png', ancho: 0.155, ax: 0.9, ay: 0.5 },
+      petaloInferiorDerecho: { archivo: 'orquidea-petalo-inferior-derecho.png', ancho: 0.155, ax: 0.1, ay: 0.5 },
+      corazon: { archivo: 'orquidea-corazon.png', ancho: 0.165, ax: 0.5, ay: 0.55 },
+      pistilo: { archivo: 'orquidea-pistilo.png', ancho: 0.056, ax: 0.5, ay: 0.88 },
+      azulAtras: { archivo: 'orquidea-flor-azul-atras.png', ancho: 0.195, ax: 0.5, ay: 0.5 },
+      azulPetalos: { archivo: 'orquidea-flor-azul-petalos.png', ancho: 0.185, ax: 0.5, ay: 0.5 },
+      azulCorazon: { archivo: 'orquidea-flor-azul-corazon.png', ancho: 0.077, ax: 0.5, ay: 0.5 },
+      azulPistilo: { archivo: 'orquidea-flor-azul-pistilo.png', ancho: 0.04, ax: 0.5, ay: 0.5 },
+      ramaDerecha: { archivo: 'orquidea-rama-derecha.png' },
+      ramaIzquierda: { archivo: 'orquidea-rama-izquierda.png' },
+    },
+    /**
+     * La flor azul viene en dos PNG agrupados. Los tres pétalos de atrás
+     * (`azulAtras`) están SEPARADOS entre sí y se pueden recortar limpios, así
+     * que cada uno se anima con su propio giro. Los dos frontales
+     * (`azulPetalos`) están unidos por el centro: se animan como una unidad,
+     * tal como pide el recorte.
+     */
+    azulAtrasRecortes: [
+      { x: 1117, y: 0, w: 1264, h: 1216, fase: 0 },
+      { x: 0, y: 760, w: 806, h: 813, fase: 2.1 },
+      { x: 1193, y: 1776, w: 872, h: 712, fase: 4.2 },
+    ],
+    /** Un pétalo por entrada, con su posición y su retardo de apertura. */
+    petalos: [
+      { clave: 'petaloSuperior', x: 0, y: 0.012, retardo: 0, giroCerrado: 0, escalaCerrada: 0.5, fase: 0 },
+      { clave: 'petaloFrontalIzquierdo', x: -0.065, y: 0.01, retardo: 0.14, giroCerrado: 0.55, escalaCerrada: 0.35, fase: 1.7 },
+      { clave: 'petaloFrontalDerecho', x: 0.065, y: 0.01, retardo: 0.14, giroCerrado: -0.55, escalaCerrada: 0.35, fase: 3.1 },
+      { clave: 'petaloInferiorIzquierdo', x: -0.008, y: 0.075, retardo: 0.28, giroCerrado: 0.45, escalaCerrada: 0.4, fase: 4.2 },
+      { clave: 'petaloInferiorDerecho', x: 0.008, y: 0.075, retardo: 0.28, giroCerrado: -0.45, escalaCerrada: 0.4, fase: 5.5 },
+    ],
+    /** Las ramas nacen del tallo y terminan en cada flor. */
+    ramaDerecha: { archivo: 'orquidea-rama-derecha.png', anchoNativo: 2202, altoNativo: 1832, ax: 0.06, ay: 0.96, tx: 0.94, ty: 0.04 },
+    ramaIzquierda: { archivo: 'orquidea-rama-izquierda.png', anchoNativo: 2199, altoNativo: 1984, ax: 0.94, ay: 0.98, tx: 0.06, ty: 0.02 },
+    // Puntos del esqueleto, en fracciones de `full` con origen en la base.
+    unionDerecha: { x: 0.011, y: 0.4 },
+    unionIzquierda: { x: 0, y: 0.345 },
+    centroAzul: { x: 0.185, y: 0.565 },
+    centroCapulloLateral: { x: -0.195, y: 0.505 },
+    /**
+     * La flor principal florece en orden: el pétalo superior primero, después
+     * los frontales y al final los inferiores y el corazón. La apertura es un
+     * estado propio, no el `florecimiento` genérico: acá abrir la mano dispara
+     * las ramas, no la corola.
+     */
+  };
+
+
   /* ---------- Catálogo de plantas ---------- */
 
   /**
@@ -61,157 +151,26 @@
    */
   const PLANTAS = [
     {
-      id: 'arbol_colorido',
-      archivo: 'arbol-colorido.png',
+      id: 'orquidea',
       /**
-       * `paisaje: true` = esta entrada NO se dibuja en #planta-overlay.
-       *
-       * Ese canvas va por encima del de p5, así que cualquier planta del
-       * catálogo queda DELANTE del personaje. Este árbol tiene que quedar
-       * detrás, así que sketch.js le presta su capa viva y lo pinta llamando a
-       * `plantaDebug.dibujarPaisaje()`. La interacción es la misma de siempre:
-       * este flag solo cambia quién dibuja.
+       * Es la única entrada de montaje: `personalizado` desvía el dibujo a
+       * `dibujarOrquidea()`. La interacción sigue siendo la misma (crecimiento
+       * con el puño, inclinación, sacudida y viento); lo que cambia es que sus
+       * piezas se animan por separado con un estado propio.
        */
-      paisaje: true,
-      // Va entre los árboles lejanos y los medios, sobre el suelo medio y más
-      // alto que ellos (0.16–0.23): se lee como el ejemplar que domina el fondo.
-      x: 0.38,
-      altura: 0.4,
-      capaSuelo: 1,
-      separacionSuelo: 0.005,
-      // El tronco serpentea; esto solo decide por dónde nace el polen.
-      talloX: 0.42,
-      faseViento: 5.3,
-      // Viene en RGB con fondo blanco: mismo recorte al cargar que las demás.
-      toleranciaFondo: 28,
-      /**
-       * Tres copas. El revelado nace donde el tronco se abre en dos y
-       * `juntura` repinta todo lo que queda por debajo, así el tronco nunca se
-       * despega del suelo. `radioMaximo` cubre la copa más lejana.
-       */
-      corola: {
-        centroX: 0.46,
-        centroY: 0.42,
-        radioMinimo: 0.1,
-        radioMaximo: 0.66,
-        suavizado: 0.06,
-        juntura: 0.56,
-      },
-    },
-    {
-      id: 'planta_azul',
-      archivo: 'planta-azul.png',
-      // Segunda planta de fondo: va PRIMERA en la lista para quedar debajo de
-      // las tres del primer plano, sobre el suelo medio y a escala de los
-      // árboles de ese plano (0.16–0.23 del alto).
-      x: 0.86,
-      altura: 0.24,
-      capaSuelo: 1,
-      separacionSuelo: 0.005,
-      // El tallo de esta ilustración está a la izquierda del centro.
-      talloX: 0.44,
-      faseViento: 4.1,
-      // Igual que las otras dos: viene en RGB sin alfa.
-      toleranciaFondo: 28,
-      // Dos cabezuelas en el extremo superior y las hojas a media altura. El
-      // revelado corta por debajo de las cabezuelas, así el tallo y las hojas
-      // quedan siempre unidos al suelo.
-      corola: {
-        centroX: 0.5,
-        centroY: 0.13,
-        radioMinimo: 0.06,
-        radioMaximo: 0.42,
-        suavizado: 0.03,
-        juntura: 0.28,
-      },
-    },
-    {
-      id: 'planta_central',
-      archivo: 'flor.png',
-      // Es la que publica el porcentaje y la que lee sketch.js.
-      principal: true,
+      archivo: 'orquidea-tallo.png',
+      personalizado: 'orquidea',
+      // Centrada y a escala de protagonista: es la única planta del catálogo.
       x: 0.5,
-      altura: 0.42,
+      altura: 0.44,
       capaSuelo: 2,
       separacionSuelo: 0.01,
-      // Su tallo es recto y centrado en la ilustración.
       talloX: 0.5,
-      // Desfase del vaivén ambiental, para que no se muevan al unísono.
-      faseViento: 0,
-      // `flor.png` ya viene con alfa: no hay fondo que recortar.
+      faseViento: 3.6,
+      // Todo el montaje viene con alfa: no hay fondo que recortar.
       toleranciaFondo: 0,
-      /**
-       * Geometría del florecimiento, en fracciones del alto de la ilustración.
-       * La corola se descubre desde su base —donde nace del tallo— hacia
-       * afuera. Es un revelado, no una deformación: los pétalos no se estiran,
-       * se dejan de tapar. `radioMaximo` cubre la corola a florecimiento 1.
-       * `juntura` es la altura por debajo de la cual la imagen se repinta
-       * completa: el tallo y las hojas no florecen. `null` desactiva el
-       * revelado (la ilustración se dibuja entera siempre).
-       */
-      corola: {
-        centroX: 0.5,
-        centroY: 0.3,
-        radioMinimo: 0.13,
-        radioMaximo: 0.4,
-        suavizado: 0.03,
-        juntura: 0.318,
-      },
-    },
-    {
-      id: 'planta_morada',
-      archivo: 'planta-morada.png',
-      // A la izquierda de la central, más baja y sin invadir su espacio: se
-      // lee como el primer plano del jardín.
-      x: 0.25,
-      altura: 0.36,
-      capaSuelo: 2,
-      separacionSuelo: 0.01,
-      // El tallo de esta ilustración está un poco a la izquierda del centro.
-      talloX: 0.48,
-      faseViento: 1.4,
-      // Viene en RGB sin alfa: el fondo blanco se recorta al cargar.
-      toleranciaFondo: 28,
-      // Las tres campanas viven en el tercio superior; las hojas, justo debajo.
-      // El revelado nace en el centro del manojo y `juntura` corta por encima
-      // de las hojas, así el tallo y las hojas nunca se separan del suelo.
-      corola: {
-        centroX: 0.5,
-        centroY: 0.26,
-        radioMinimo: 0.12,
-        radioMaximo: 0.5,
-        suavizado: 0.03,
-        juntura: 0.36,
-      },
-    },
-    {
-      id: 'planta_naranja',
-      archivo: 'planta-naranja.png',
-      // A la derecha de la central, misma altura que la morada: el jardín queda
-      // simétrico y ninguna de las dos invade el centro.
-      x: 0.76,
-      altura: 0.36,
-      capaSuelo: 2,
-      separacionSuelo: 0.01,
-      // Tallo recto y centrado en la ilustración.
-      talloX: 0.5,
-      faseViento: 2.8,
-      // También viene en RGB sin alfa: mismo recorte al cargar.
-      toleranciaFondo: 28,
-      // Cinco flores en abanico sobre el tercio superior. El revelado nace en
-      // el centro del abanico y `juntura` corta por debajo de la flor más baja,
-      // así el tallo nunca se despega del suelo.
-      corola: {
-        centroX: 0.5,
-        centroY: 0.24,
-        radioMinimo: 0.1,
-        radioMaximo: 0.48,
-        suavizado: 0.03,
-        juntura: 0.42,
-      },
     },
   ];
-
   /* ---------- Sacudida ---------- */
 
   /** Velocidad mínima de la muñeca, en unidades normalizadas por segundo. */
@@ -299,10 +258,10 @@
   const plantas = PLANTAS.map(crearPlanta);
 
   /**
-   * La central es la que publica el porcentaje y la que lee sketch.js.
-   * Se marca con `principal: true` en el catálogo y NO se busca por posición:
-   * el orden de la lista es el orden de dibujo, y una planta de fondo puede ir
-   * primero sin romper el contrato.
+   * La planta que publica el porcentaje y la que lee sketch.js. Se marca con
+   * `principal: true` en el catálogo; si ninguna lo declara, se usa la última.
+   * Hoy el catálogo tiene solo la orquídea, así que es ella la que alimenta el
+   * follaje y al personaje.
    */
   const principal =
     plantas.find((planta) => planta.def.principal) || plantas[plantas.length - 1];
@@ -311,10 +270,14 @@
     return {
       def,
       imagen: null,
+      partes: null, // solo la orquídea: piezas del montaje por clave
+      partesListas: 0,
       lista: false,
       proporcion: 1, // ancho / alto, se lee al cargar la ilustración
       crecimiento: 0, // valor mostrado (suavizado) 0..1
       florecimiento: 0, // revelado de la corola 0..1
+      // Secuencia propia de la orquídea. En las demás plantas queda en 0.
+      orquidea: { llegoArriba: false, apertura: 0, ramas: 0 },
       particulas: [],
       acumuladorEmision: 0,
     };
@@ -346,6 +309,11 @@
   }
 
   function cargarImagen(planta) {
+    if (planta.def.personalizado === 'orquidea') {
+      cargarOrquidea(planta);
+      return;
+    }
+
     const imagen = new Image();
     imagen.onload = () => {
       planta.proporcion = imagen.naturalWidth / imagen.naturalHeight;
@@ -359,6 +327,40 @@
     };
     imagen.src = planta.def.archivo;
     planta.imagen = imagen;
+  }
+
+  /**
+   * Carga las piezas del montaje de la orquídea. Cada archivo entra a
+   * `planta.partes` con su clave; recién cuando terminaron todos (bien o mal)
+   * la planta queda `lista`, y las piezas que falten simplemente no se dibujan.
+   */
+  function cargarOrquidea(planta) {
+    const piezas = Object.entries(ORQUIDEA.piezas);
+    planta.partes = {};
+    planta.partesListas = 0;
+
+    const terminar = () => {
+      planta.partesListas += 1;
+      if (planta.partesListas === piezas.length) {
+        planta.proporcion = 1;
+        planta.lista = true;
+      }
+    };
+
+    for (const [clave, pieza] of piezas) {
+      const imagen = new Image();
+      imagen.onload = () => {
+        planta.partes[clave] = imagen;
+        terminar();
+      };
+      imagen.onerror = () => {
+        console.warn(
+          '[planta] No se pudo cargar ' + pieza.archivo + '; falta esa pieza de la orquídea.'
+        );
+        terminar();
+      };
+      imagen.src = pieza.archivo;
+    }
   }
 
   /**
@@ -463,6 +465,7 @@
     actualizarSacudida(ahora, dt);
     actualizarCrecimiento(dt);
     actualizarFlorecimiento(dt);
+    actualizarOrquidea(dt);
     actualizarInclinacion(dt);
     actualizarParticulas(dt);
   }
@@ -607,6 +610,67 @@
     if (!manos || manos.length === 0) return false;
 
     return manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
+  }
+
+  /* ---------- Orquídea: secuencia ---------- */
+
+  /**
+   * La flor solo se muestra abierta cuando se juntan DOS condiciones:
+   *
+   *   1. el tallo está en la punta (crecimiento >= 0.985);
+   *   2. hay una mano abierta.
+   *
+   * Si falta cualquiera de las dos, la orquídea vuelve a su estado normal de
+   * planta crecida: el capullo cerrado en la punta del tallo y sin ramas. La
+   * apertura NO es acumulativa: es reversible. Si el puño baja, la flor se
+   * cierra y vuelve a ser capullo, porque si no el capullo/flor quedaría
+   * estirado sobre un tallo más corto.
+   *
+   * `ramas` sigue a `apertura` con la misma lógica: abrir la mano en la punta
+   * despliega ramas, flor azul, capullo lateral y hoja pequeña; cerrar la mano
+   * (o bajar) las repliega.
+   */
+  function actualizarOrquidea(dt) {
+    const planta = plantas.find((candidata) => candidata.def.personalizado === 'orquidea');
+    if (!planta) return;
+
+    const estado = planta.orquidea;
+    const enLaPunta = planta.crecimiento >= 0.985;
+    const manoAbierta = hayManoAbierta();
+
+    estado.llegoArriba = enLaPunta;
+
+    // Abrir es más lento que cerrar: la flor se despliega pétalo por pétalo,
+    // pero cuando la mano se va o el tallo baja, se recoge enseguida.
+    const objetivoApertura = enLaPunta && manoAbierta ? 1 : 0;
+    const velocidadApertura =
+      objetivoApertura > estado.apertura
+        ? 1 / ORQUIDEA.aperturaSegundos
+        : 1 / ORQUIDEA.cierreSegundos;
+    estado.apertura = moverHacia(
+      estado.apertura,
+      objetivoApertura,
+      velocidadApertura * dt
+    );
+
+    const objetivoRamas =
+      estado.apertura >= ORQUIDEA.ramasDesdeApertura && manoAbierta && enLaPunta ? 1 : 0;
+    const velocidadRamas =
+      objetivoRamas > estado.ramas
+        ? 1 / ORQUIDEA.ramasSegundos
+        : 1 / ORQUIDEA.cierreRamasSegundos;
+    estado.ramas = moverHacia(estado.ramas, objetivoRamas, velocidadRamas * dt);
+
+    // `sketch.js` y el panel leen `florecimiento`: para la orquídea es su
+    // apertura real, no la mano abierta sola.
+    planta.florecimiento = estado.apertura;
+  }
+
+  /** Avanza un valor hacia un objetivo como máximo `paso` por frame. */
+  function moverHacia(actual, objetivo, paso) {
+    if (paso <= 0 || actual === objetivo) return actual;
+    if (Math.abs(objetivo - actual) <= paso) return objetivo;
+    return actual + Math.sign(objetivo - actual) * paso;
   }
 
   /* ---------- Inclinación ---------- */
@@ -915,7 +979,15 @@
    * animación es esta misma, solo cambia la capa donde termina el píxel.
    */
   function dibujarPlanta(planta, ancho, alto, ahora, contexto = ctx) {
-    if (!planta.lista || planta.crecimiento <= 0.004) return;
+    if (!planta.lista) return;
+
+    // La orquídea no es una ilustración única: tiene su propio montaje.
+    if (planta.def.personalizado === 'orquidea') {
+      dibujarOrquidea(planta, ancho, alto, ahora, contexto);
+      return;
+    }
+
+    if (planta.crecimiento <= 0.004) return;
 
     const c = contexto || ctx;
     const base = baseDeLaPlanta(planta.def, ancho, alto);
@@ -1027,10 +1099,278 @@
     c.restore();
   }
 
+  /* ---------- Orquídea: dibujo del montaje ---------- */
+
   /**
-   * Punto del tallo en t = 0 (base) .. 1 (punta). El tallo de la ilustración
-   * es recto y vertical, así que las partículas nacen exactamente sobre él.
+   * Dibuja una pieza del montaje anclada en `(cx, cy)`.
+   *
+   * `ancho` es el ancho dibujado; el alto sale de la proporción real del PNG.
+   * `ax`/`ay` eligen qué punto del dibujo queda clavado en el esqueleto, así
+   * la pieza gira desde su base (hojas) o desde su unión (pétalos, ramas).
    */
+  function dibujarParte(c, imagen, cx, cy, ancho, giro, ax, ay, alfa) {
+    if (!imagen || ancho <= 0) return;
+    if (alfa !== undefined && alfa <= 0.001) return;
+
+    const alto = ancho * (imagen.naturalHeight / imagen.naturalWidth);
+    c.save();
+    if (alfa !== undefined) c.globalAlpha *= alfa;
+    c.translate(cx, cy);
+    if (giro) c.rotate(giro);
+    c.drawImage(imagen, -ax * ancho, -ay * alto, ancho, alto);
+    c.restore();
+  }
+
+  /**
+   * Una rama del montaje: se escala de forma UNIFORME para que el trazo no se
+   * deforme, se ancla en su extremo inferior y se gira para que el extremo
+   * superior caiga exactamente en `punta`.
+   */
+  function dibujarRama(c, imagen, datos, union, punta, alfa) {
+    if (!imagen || alfa <= 0.001) return;
+
+    const vx = (datos.tx - datos.ax) * datos.anchoNativo;
+    const vy = (datos.ty - datos.ay) * datos.altoNativo;
+    const largoNativo = Math.hypot(vx, vy);
+    if (largoNativo <= 0) return;
+
+    const dx = punta.x - union.x;
+    const dy = punta.y - union.y;
+    const escala = Math.hypot(dx, dy) / largoNativo;
+
+    const ancho = datos.anchoNativo * escala;
+    const alto = datos.altoNativo * escala;
+
+    c.save();
+    c.globalAlpha *= alfa;
+    c.translate(union.x, union.y);
+    c.rotate(Math.atan2(dy, dx) - Math.atan2(vy, vx));
+    c.drawImage(imagen, -datos.ax * ancho, -datos.ay * alto, ancho, alto);
+    c.restore();
+  }
+
+  /**
+   * Vaivén propio de una rama: la punta se mueve un poco respecto de su unión.
+   * La flor que se dibuja después usa ESA misma punta, así nunca se separan.
+   */
+  function puntaConVaiven(punta, ahora, fase, ramas, full) {
+    const fuerza = limitar(ramas, 0, 1) * full;
+    return {
+      x: punta.x + Math.sin(ahora * 0.0011 + fase) * 0.008 * fuerza,
+      y: punta.y + Math.cos(ahora * 0.0014 + fase * 1.7) * 0.004 * fuerza,
+    };
+  }
+
+  /**
+   * La orquídea completa. Comparte con las demás plantas el crecimiento, la
+   * inclinación, la sacudida, el viento y las partículas; lo propio es el
+   * montaje: el tallo se estira con el crecimiento y la flor se arma con
+   * piezas que se abren y se mecen por separado.
+   */
+  function dibujarOrquidea(planta, ancho, alto, ahora, contexto = ctx) {
+    const piezas = planta.partes;
+    if (!piezas || !piezas.tallo) return;
+
+    const c = contexto || ctx;
+    const base = baseDeLaPlanta(planta.def, ancho, alto);
+    const full = alto * planta.def.altura;
+    const estado = planta.orquidea;
+    const apertura = estado.apertura;
+
+    // ---- hojas de la base: fijas, no acompañan el balanceo del tallo ----
+    const hojaIzq = ORQUIDEA.piezas.hojaBaseIzquierda;
+    const hojaDer = ORQUIDEA.piezas.hojaBaseDerecha;
+    dibujarParte(c, piezas.hojaBaseIzquierda, base.x - 0.006 * full, base.y + 0.002 * full, hojaIzq.ancho * full, 0.03, hojaIzq.ax, hojaIzq.ay);
+    dibujarParte(c, piezas.hojaBaseDerecha, base.x + 0.006 * full, base.y + 0.002 * full, hojaDer.ancho * full, -0.03, hojaDer.ax, hojaDer.ay);
+
+    c.save();
+
+    // Todo lo que nace del tallo pivota en la base: el suelo queda quieto.
+    const anguloPlanta =
+      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    c.translate(base.x, base.y);
+    c.rotate(anguloPlanta);
+
+    // ---- tallo: se estira con el crecimiento ----
+    const largo = (ORQUIDEA.talloMinimo + (ORQUIDEA.talloMaximo - ORQUIDEA.talloMinimo) * planta.crecimiento) * full;
+    const anchoTallo = largo * (piezas.tallo.naturalWidth / piezas.tallo.naturalHeight) * ORQUIDEA.talloAngosto;
+    c.drawImage(piezas.tallo, -ORQUIDEA.talloBase * anchoTallo, -largo, anchoTallo, largo);
+
+    const puntaTallo = (ORQUIDEA.talloPunta - ORQUIDEA.talloBase) * anchoTallo;
+    const centroFlor = {
+      x: puntaTallo,
+      y: -largo - ORQUIDEA.florSobrePunta * full,
+    };
+
+    // ---- hoja alta: se despliega con la apertura de la flor ----
+    const hojaAlta = ORQUIDEA.piezas.hojaAlta;
+    if (apertura > 0.001) {
+      const t = suavizar(limitar((apertura - 0.15) / 0.7, 0, 1));
+      dibujarParte(
+        c,
+        piezas.hojaAlta,
+        0.03 * full,
+        0.005 * full,
+        hojaAlta.ancho * full * (0.35 + 0.65 * t),
+        -0.2 - (1 - t) * 0.35,
+        hojaAlta.ax,
+        hojaAlta.ay,
+        Math.min(1, apertura * 3)
+      );
+    }
+
+    // ---- hoja pequeña: al lado IZQUIERDO de la base y chica ----
+    const hojaPequena = ORQUIDEA.piezas.hojaPequena;
+    if (estado.ramas > 0.001) {
+      const t = suavizar(limitar((estado.ramas - 0.15) / 0.7, 0, 1));
+      dibujarParte(
+        c,
+        piezas.hojaPequena,
+        -0.045 * full,
+        0.005 * full,
+        hojaPequena.ancho * full * (0.35 + 0.65 * t),
+        -1.03 - (1 - t) * 0.3,
+        hojaPequena.ax,
+        hojaPequena.ay,
+        Math.min(1, estado.ramas * 3)
+      );
+    }
+
+    // ---- flor principal: capullo mientras no abrió, pétalos después ----
+    // El capullo se ancla en la PUNTA del tallo, no en el centro de la flor:
+    // así queda pegado al borde del tallo y no flotando.
+    if (apertura < 0.6) {
+      const capullo = ORQUIDEA.piezas.capulloPrincipal;
+      const resto = 1 - limitar(apertura / 0.6, 0, 1);
+      dibujarParte(
+        c,
+        piezas.capulloPrincipal,
+        puntaTallo,
+        -largo + 0.006 * full,
+        capullo.ancho * full * resto,
+        0.03,
+        capullo.ax,
+        capullo.ay,
+        Math.min(1, resto * 2)
+      );
+    }
+
+    if (apertura > 0.001) {
+      ORQUIDEA.petalos.forEach((petalo, petalosIndice) => {
+        const pieza = ORQUIDEA.piezas[petalo.clave];
+        const t = suavizar(limitar((apertura - petalo.retardo) / (1 - petalo.retardo), 0, 1));
+        const escala = petalo.escalaCerrada + (1 - petalo.escalaCerrada) * t;
+        // Cada pétalo tiene su propio vaivén: la flor respira, no se abre en bloque.
+        const vaiven = Math.sin(ahora * (0.0009 + petalosIndice * 0.00012) + petalo.fase) * 0.025 * t;
+        dibujarParte(
+          c,
+          piezas[petalo.clave],
+          centroFlor.x + petalo.x * full,
+          centroFlor.y + petalo.y * full,
+          pieza.ancho * full * escala,
+          (1 - t) * petalo.giroCerrado + vaiven,
+          pieza.ax,
+          pieza.ay,
+          Math.min(1, t * 2.5)
+        );
+      });
+
+      const corazonT = suavizar(limitar((apertura - 0.45) / 0.55, 0, 1));
+      if (corazonT > 0) {
+        const corazon = ORQUIDEA.piezas.corazon;
+        const pistilo = ORQUIDEA.piezas.pistilo;
+        const escala = 0.35 + 0.65 * corazonT;
+        dibujarParte(c, piezas.corazon, centroFlor.x, centroFlor.y - 0.005 * full, corazon.ancho * full * escala, 0, corazon.ax, corazon.ay, corazonT);
+        dibujarParte(c, piezas.pistilo, centroFlor.x + 0.004 * full, centroFlor.y + 0.008 * full, pistilo.ancho * full * escala, 0, pistilo.ax, pistilo.ay, corazonT);
+      }
+    }
+
+    // ---- ramas, capullo lateral y flor azul ----
+    if (estado.ramas > 0.001) {
+      const ramas = estado.ramas;
+      const unionDerecha = { x: ORQUIDEA.unionDerecha.x * full, y: -ORQUIDEA.unionDerecha.y * full };
+      const unionIzquierda = { x: ORQUIDEA.unionIzquierda.x * full, y: -ORQUIDEA.unionIzquierda.y * full };
+      const centroAzul = {
+        x: ORQUIDEA.centroAzul.x * full,
+        y: -ORQUIDEA.centroAzul.y * full,
+      };
+      const centroCapullo = {
+        x: ORQUIDEA.centroCapulloLateral.x * full,
+        y: -ORQUIDEA.centroCapulloLateral.y * full,
+      };
+
+      const puntaDerecha = puntaConVaiven(centroAzul, ahora, 0.6, ramas, full);
+      const puntaIzquierda = puntaConVaiven(centroCapullo, ahora, 2.9, ramas, full);
+
+      const avanceDerecha = limitar(ramas / 0.75, 0, 1);
+      const avanceIzquierda = limitar((ramas - 0.05) / 0.75, 0, 1);
+
+      dibujarRama(c, piezas.ramaDerecha, ORQUIDEA.ramaDerecha, unionDerecha, puntaDerecha, Math.min(1, avanceDerecha * 2));
+      dibujarRama(c, piezas.ramaIzquierda, ORQUIDEA.ramaIzquierda, unionIzquierda, puntaIzquierda, Math.min(1, avanceIzquierda * 2));
+
+      const capullo = ORQUIDEA.piezas.capulloLateral;
+      const avanceCapullo = Math.min(1, avanceIzquierda * 2);
+      dibujarParte(
+        c,
+        piezas.capulloLateral,
+        puntaIzquierda.x,
+        puntaIzquierda.y - 0.035 * full,
+        capullo.ancho * full * avanceCapullo,
+        0.06,
+        capullo.ax,
+        capullo.ay,
+        avanceCapullo
+      );
+
+      if (ramas > 0.25) {
+        const t = suavizar(limitar((ramas - 0.25) / 0.55, 0, 1));
+        const escala = 0.4 + 0.6 * t;
+
+        // Pétalos de atrás: los tres recortes del mismo PNG giran por separado.
+        const atras = ORQUIDEA.piezas.azulAtras;
+        const imgAtras = piezas.azulAtras;
+        if (imgAtras) {
+          const anchoAtras = atras.ancho * full * escala;
+          const altoAtras = anchoAtras * (imgAtras.naturalHeight / imgAtras.naturalWidth);
+          for (const recorte of ORQUIDEA.azulAtrasRecortes) {
+            const giro = Math.sin(ahora * 0.0012 + recorte.fase) * 0.02 * t;
+            c.save();
+            c.globalAlpha *= t;
+            c.translate(puntaDerecha.x, puntaDerecha.y);
+            c.rotate(0.03 + giro);
+            c.drawImage(
+              imgAtras,
+              recorte.x,
+              recorte.y,
+              recorte.w,
+              recorte.h,
+              -anchoAtras * 0.5 + (recorte.x / imgAtras.naturalWidth) * anchoAtras,
+              -altoAtras * 0.5 + (recorte.y / imgAtras.naturalHeight) * altoAtras,
+              (recorte.w / imgAtras.naturalWidth) * anchoAtras,
+              (recorte.h / imgAtras.naturalHeight) * altoAtras
+            );
+            c.restore();
+          }
+        }
+
+        // Pétalos frontales: vienen unidos por el centro, van como una unidad.
+        const petalos = ORQUIDEA.piezas.azulPetalos;
+        const corazon = ORQUIDEA.piezas.azulCorazon;
+        const pistilo = ORQUIDEA.piezas.azulPistilo;
+        dibujarParte(c, piezas.azulPetalos, puntaDerecha.x + 0.004 * full, puntaDerecha.y + 0.012 * full, petalos.ancho * full * escala, 0.03, petalos.ax, petalos.ay, t);
+        dibujarParte(c, piezas.azulCorazon, puntaDerecha.x + 0.008 * full, puntaDerecha.y - 0.001 * full, corazon.ancho * full * escala, 0, corazon.ax, corazon.ay, t);
+        dibujarParte(c, piezas.azulPistilo, puntaDerecha.x + 0.014 * full, puntaDerecha.y + 0.014 * full, pistilo.ancho * full * escala, 0.12, pistilo.ax, pistilo.ay, t);
+      }
+    }
+
+    c.restore();
+  }
+
+  /** Curva de suavizado corta, reutilizada por el montaje. */
+  function suavizar(t) {
+    return t * t * (3 - 2 * t);
+  }
+
   function puntoDelTallo(base, altura, t, desplazamientoX) {
     return { x: base.x + desplazamientoX, y: base.y - altura * t };
   }
@@ -1079,6 +1419,33 @@
     return Math.min(maximo, Math.max(minimo, valor));
   }
 
+  /**
+   * Vuelve al estado de una carga limpia: altura, floración, inclinación,
+   * sacudida, partículas y secuencia de la orquídea. No recarga imágenes.
+   */
+  function reiniciar() {
+    objetivo = 0;
+    indiceNivel = 0;
+    objetivoFloracion = 0;
+    intensidadSacudida = 0;
+    congelarAltura = false;
+    inclinacion = 0;
+    velocidadInclinacion = 0;
+    objetivoInclinacion = 0;
+
+    for (const clave of Object.keys(estadosSacudida)) delete estadosSacudida[clave];
+
+    for (const planta of plantas) {
+      planta.crecimiento = 0;
+      planta.florecimiento = 0;
+      planta.particulas = [];
+      planta.acumuladorEmision = 0;
+      planta.orquidea.llegoArriba = false;
+      planta.orquidea.apertura = 0;
+      planta.orquidea.ramas = 0;
+    }
+  }
+
   // Acceso de solo lectura para comprobar el mapeo desde la consola.
   // Los métodos históricos hablan de la planta central (la que lee sketch.js);
   // `plantas()` y `crecimientoDe()` permiten mirar cualquiera del catálogo.
@@ -1099,11 +1466,38 @@
         florecimiento: planta.florecimiento,
         particulas: planta.particulas.length,
         proporcion: planta.proporcion,
+        // Solo la orquídea los usa; en el resto quedan en 0.
+        apertura: planta.orquidea.apertura,
+        ramas: planta.orquidea.ramas,
       })),
     crecimientoDe: (id) => {
       const planta = plantas.find((candidata) => candidata.def.id === id);
       return planta ? planta.crecimiento : null;
     },
+    /**
+     * Estado de la secuencia de la orquídea, para comprobarla sin cámara:
+     *   llegoArriba → el puño completó la altura máxima
+     *   apertura    → 0..1, flor principal abriéndose pétalo por pétalo
+     *   ramas       → 0..1, ramas, flor azul, capullo lateral y hoja pequeña
+     */
+    orquidea: () => {
+      const planta = plantas.find((candidata) => candidata.def.id === 'orquidea');
+      if (!planta) return null;
+      return {
+        cargada: planta.lista,
+        piezas: planta.partes ? Object.keys(planta.partes).length : 0,
+        crecimiento: planta.crecimiento,
+        llegoArriba: planta.orquidea.llegoArriba,
+        apertura: planta.orquidea.apertura,
+        ramas: planta.orquidea.ramas,
+      };
+    },
+    /**
+     * Vuelve todo el jardín al estado inicial: es el "reiniciar" de la
+     * experiencia, el mismo estado con el que arranca una carga limpia.
+     * Sirve para repetir la secuencia de la orquídea sin recargar la página.
+     */
+    reiniciar: () => reiniciar(),
     /**
      * Dibuja las entradas marcadas con `paisaje: true` en OTRO contexto 2D, con
      * las mismas coordenadas lógicas del lienzo. La usa sketch.js para el árbol
