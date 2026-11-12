@@ -68,3 +68,15 @@ unidad (no se pueden separar sin redibujar el arte).
 - Las 20 piezas declaradas existen en disco.
 - `gentle-ai review assess --base-ref 844f18e --committed-only` → riesgo
   `medium`, `review_due: false` (`under_budget`).
+
+### L2 — corrección del usuario
+
+> «algunas remificaciones de la tercera planta estan alejadas demasiado del
+> tallo, arregla eso por favor que nazcan del tallo principal»
+
+Las uniones estaban sobre la *línea de centro* teórica del tallo, pero el tallo
+dibujado se inclina: a la altura de las ramas de arriba su borde derecho cae
+hasta 0.06 de `full` a la izquierda de donde se las había puesto, así que
+flotaban. Se recalcularon las seis `union` contra los bordes reales del tallo
+(medidos del PNG) y quedan tapadas por él, que se dibuja después. Además la
+primera rama bajó de 0.86 a 0.845 para no cruzarse con el gancho de la punta.

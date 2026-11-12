@@ -665,6 +665,11 @@ composición. La escena se parte en tres capas:
   flor se dibuja en la punta exacta de ese arco (`puntaConVaiven()`), así nunca
   se separan. Mientras la flor está cerrada se encoge (`escalaCerrada` 0.5) y se
   arrima al arco: el capullo se arma con la misma pieza de la flor abierta.
+- **La `union` de cada rama cae sobre el tallo**, no al lado: el tallo dibujado
+  mide ~0.03 de `full` de ancho, y sus bordes en cada altura salen de su
+  geometría nativa (a la altura 0.86 el tallo va de -0.131 a -0.105). Como las
+  ramas se dibujan antes que el tallo, la unión queda tapada y el arco nace del
+  borde. Si se mueve una `union` hacia afuera, la rama queda flotando.
 - **Reversible**: cerrar la mano repliega las ramas y bajar el puño cierra la
   flor de la punta; el arco vuelve a cero y la bolita regresa a la punta del
   tallo. Abrir la mano antes de la altura máxima no adelanta nada.
