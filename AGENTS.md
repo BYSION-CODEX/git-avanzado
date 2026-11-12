@@ -6,14 +6,15 @@ sin build, sin package manager, sin tests.
 ## Estado
 
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
-gestos (mano abierta / puño) + **dos plantas interactivas**: la orquídea
-(centrada, montada con 20 piezas) y la **planta de tres flores** (a la izquierda,
-montada con 14 piezas) + **paisaje de fondo en dos PNG** que pasa de gris con
-neblina a atardecer a color siguiendo el crecimiento + nubes y destellos en una
-capa intermedia + árboles que reverdecen con ese crecimiento mientras haya
-manos en cuadro. El personaje que caminaba en el fondo se retiró. Del cuerpo se
-leen nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
-puntos de cada una.
+gestos (mano abierta / puño) + **tres plantas interactivas**: la orquídea
+(centrada, montada con 20 piezas), la **planta de tres flores** (a la izquierda,
+montada con 14 piezas) y la **planta derecha** (a la derecha, montada con 20
+piezas y su propia secuencia de arcos y flores colgantes) + **paisaje de fondo en
+dos PNG** que pasa de gris con neblina a atardecer a color siguiendo el
+crecimiento + nubes y destellos en una capa intermedia + árboles que reverdecen
+con ese crecimiento mientras haya manos en cuadro. El personaje que caminaba en
+el fondo se retiró. Del cuerpo se leen nariz, ojos, orejas, hombros, codos,
+muñecas y caderas; de las manos, los 21 puntos de cada una.
 
 > Las cinco entradas anteriores del catálogo (`arbol_colorido`, `planta_azul`,
 > `planta_central`, `planta_morada`, `planta_naranja`) se retiraron de
@@ -63,13 +64,16 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `arbol-colorido.png` | ilustración del ex `arbol_colorido`. **Fuera del catálogo**: ya no se carga |
 | `orquidea-*.png` | las **20 piezas** del montaje de `orquidea` (tallo, hojas, capullos, pétalos, corazón, pistilo, ramas y flor azul). Todas con alfa; ver «Orquídea» |
 | `tres-flores-*.png` | las **14 piezas** del montaje de `tres_flores` (tallo, 5 hojas, 2 ramas y 6 grupos de pétalos: flor principal, izquierda y derecha). Todas con alfa; ver «Planta de tres flores» |
+| `derecha-*.png` | las **20 piezas** del montaje de `planta_derecha` (tallo, bolita, arco de la punta, 6 arcos, 7 flores y 4 hojas). Todas con alfa; ver «Planta derecha» |
+| `planta_referencia.jpeg` | lámina de referencia de la planta derecha. **No se carga**: es la guía del montaje y de las proporciones |
 | `fondo_gris_neblina.png` | paisaje de base: colinas, neblina y pasto en gris. Se dibuja siempre, abajo del atardecer |
 | `fondo_atardecer_color.png` | la misma composición a color. Se dibuja encima con la opacidad que marca el crecimiento; ver «Paisaje de fondo» |
 
-Cinco archivos de código y 42 imágenes en disco: las 20 piezas de la orquídea,
-las 14 de la planta de tres flores, los dos fondos y los PNG de las plantas
-retiradas que ya no se cargan. Si aparece un módulo nuevo, registrarlo en
-`index.html` en el orden correcto y documentarlo acá.
+Cinco archivos de código y 63 imágenes en disco: las 20 piezas de la orquídea,
+las 14 de la planta de tres flores, las 20 de la planta derecha, los dos fondos
+y los PNG de las plantas retiradas que ya no se cargan, más la lámina de
+referencia. Si aparece un módulo nuevo, registrarlo en `index.html` en el orden
+correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
@@ -130,8 +134,15 @@ composición. La escena se parte en tres capas:
   `progresoDePlantas()` (el mayor `crecimiento` entre las plantas del catálogo),
   lo pasa por `suavizar()` y lo amortigua con `velocidadEntrada` / `velocidadSalida`.
   Esa lectura es también la que usan nubes y destellos.
-- **Se conserva el color** cuando la mano baja o sale de cuadro: el crecimiento
-  no retrocede sin un puño nuevo, así que la opacidad se queda en 1.
+- **Sin manos no hay paisaje**: `progresoDePlantas()` devuelve 0 si `obtenerManos()`
+  viene vacío, así el atardecer, las nubes y los destellos del horizonte vuelven
+  a gris aunque las plantas hayan quedado al 100 % y las flores abiertas. Las
+  plantas conservan su altura (ese es su contrato), pero el color lo sostiene la
+  presencia de la mano. La caída usa `velocidadSalida` (4.5/s), así que el gris
+  vuelve en menos de un segundo y sin salto.
+- **Se conserva el color** cuando el puño baja: el crecimiento no retrocede sin
+  un puño nuevo y la mano sigue en cuadro, así que la opacidad se queda en 1.
+  Lo que la apaga es que la mano salga de cuadro, no que se cierre.
 - **Reinicio**: si el crecimiento cae de golpe a 0, `reiniciarEfectosPaisaje()`
   limpia la oleada y rearma las flores; la opacidad vuelve a 0 con la misma
   amortiguación. Recargar la página también reinicia.
@@ -420,7 +431,8 @@ composición. La escena se parte en tres capas:
   plantas con el mismo margen desde el borde inferior del lienzo, sin tocarlo.
   Ya no siguen la curva del suelo: la base pareja las separa del bosque. La
   lista se dibuja de atrás hacia adelante (la primera queda debajo); la planta de
-  tres flores va primera y la orquídea última, así la protagonista queda encima.
+  tres flores va primera, la planta derecha segunda y la orquídea última, así la
+  protagonista queda encima.
 - **Cada planta tiene su propio estado**: imagen, proporción, `crecimiento`,
   `florecimiento` y partículas. El objetivo lo calculan las manos una vez y cada
   planta lo alcanza con su suavizado, así no comparten la variable de dibujo.
@@ -442,9 +454,10 @@ composición. La escena se parte en tres capas:
   (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la base
   queda clavada sobre el suelo mientras la planta crece hacia arriba.
 - `altura` (fracción del alto del lienzo al 100%) y `x` (fracción del ancho) son
-  de cada planta: la orquídea va en `0.5` / `0.5` y la planta de tres flores en
-  `0.22` / `0.46`. Cada `faseViento` distinta evita que se mezan al unísono.
-  Ambas se agrandaron para que lean como primer plano delante de los árboles.
+  de cada planta: la orquídea va en `0.5` / `0.5`, la planta de tres flores en
+  `0.22` / `0.46` y la planta derecha en `0.79` / `0.44`. Cada `faseViento`
+  distinta evita que se mezan al unísono. Todas se agrandaron para que lean como
+  primer plano delante de los árboles.
 - La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
   no está lista esa planta no se dibuja; si falta el archivo, el resto de la
   experiencia sigue andando y solo se pierde esa planta.
@@ -460,7 +473,9 @@ composición. La escena se parte en tres capas:
   `principal: true`, o la última del catálogo si ninguna lo hace). La orquídea
   está marcada `principal: true`, así que su crecimiento alimenta el follaje y
   al personaje; su `florecimiento` es la apertura real de la flor. La planta de
-  tres flores comparte el mismo crecimiento, pero no publica ese contrato.
+  tres flores comparte el mismo crecimiento, pero no publica ese contrato; la
+  planta derecha tampoco, y publica `florecimiento` como el máximo entre la flor
+  de su punta y sus ramas.
 - Altura de la mano = **centro de la palma** (promedio de muñeca `keypoints[0]`
   y base del dedo medio `keypoints[9]`), en coordenadas ya normalizadas 0..1.
 - Banda útil `BANDA_Y_ABAJO` 0.85 → `BANDA_Y_ARRIBA` 0.20. Fuera de ahí no hay
@@ -612,6 +627,69 @@ composición. La escena se parte en tres capas:
   0; `reiniciar()` → todo 0 y la secuencia se repite. La base no se movió al
   cambiar de altura.
 
+### Planta derecha: arcos y flores colgantes
+
+- Es la **tercera entrada** del catálogo (`id: 'planta_derecha'`, `x: 0.79`,
+  `altura: 0.44`). `personalizado: 'planta-derecha'` desvía el dibujo a
+  `dibujarPlantaDerecha()`. Comparte con las otras la detección de mano, la
+  calibración de altura, la inclinación, la sacudida, el viento, las partículas y
+  el reinicio; lo propio es su montaje.
+- **Las 20 piezas salieron de `C:\Users\USER\Desktop\planta 3`**, renombradas a
+  `derecha-*.png`. Los nombres originales eran ambiguos (`flor 1 arriba_derecha`,
+  `flores_de_colores_lor 3 …`): cada archivo se identificó por su forma, no por
+  el nombre. La lámina `planta_referencia.jpeg` (también en la carpeta) es la
+  guía de proporciones y del orden de montaje.
+- **El mapa de piezas**: `derecha-tallo.png` es el tallo en S que termina en
+  gancho; `derecha-baya.png` es la bolita del extremo; `derecha-arco-superior.png`
+  + `derecha-flor-superior.png` son el arco de la punta y su flor;
+  `derecha-rama-2…5.png` los cuatro arcos derechos con sus flores
+  (`derecha-flor-2…5.png`); `derecha-rama-izquierda-arriba/abajo.png` los dos
+  arcos que van hacia la izquierda con sus flores espejadas; y las cuatro hojas
+  `derecha-hoja-*`. Las cinco flores derechas son variantes del mismo diseño (no
+  hay grupos trasero/frontal separados: la campana y el pétalo de atrás vienen
+  en el mismo PNG y se animan como una unidad).
+- **La base no se mueve**: las cuatro hojas van fuera del grupo que gira; todo lo
+  que nace del tallo pivota en `baseDeLaPlanta()`. Las dos de atrás se dibujan
+  antes del tallo y las dos de adelante después, como en la lámina.
+- **El tallo se estira** entre `talloMinimo` 0.22 y `talloMaximo` 0.98 de `full`
+  (el alto máximo = `alto * altura`). La punta se calcula con su geometría nativa
+  (`talloPunta` 0.9965, `talloBase` 0.6404, `talloPuntaY` 0.9523).
+- **La bolita es el capullo**: vive en la punta del arco superior, y al empezar
+  ese arco mide cero, así que su punta ES la punta del tallo. Por eso el brote
+  del puño ya muestra la bolita y, al crecer el tallo, sube con él. Al abrirse la
+  flor de la punta el arco se despliega hacia la derecha y la bolita queda como
+  remate del arco.
+- **Secuencia**:
+  1. con el puño aparece el brote y se despliegan las hojas de la base
+     (`despliegueHojas` 0.16 de crecimiento);
+  2. al llegar a la punta (`crecimiento >= 0.985`) se abre la flor de la punta:
+     primero el arco (`arcoTramo` 0.55) y después la flor
+     (`florPuntaDesde` 0.5), con puño o sin él;
+  3. con la mano abierta y la flor de la punta abierta crecen las ramas
+     (`ramas`), de arriba hacia abajo por sus tramos `inicio`/`fin`; cada flor
+     abre cuando su rama llegó a su largo final.
+- **Cada rama es un arco** que se escala de forma uniforme desde su unión, y su
+  flor se dibuja en la punta exacta de ese arco (`puntaConVaiven()`), así nunca
+  se separan. Mientras la flor está cerrada se encoge (`escalaCerrada` 0.5) y se
+  arrima al arco: el capullo se arma con la misma pieza de la flor abierta.
+- **La `union` de cada rama cae sobre el tallo**, no al lado: el tallo dibujado
+  mide ~0.03 de `full` de ancho, y sus bordes en cada altura salen de su
+  geometría nativa (a la altura 0.86 el tallo va de -0.131 a -0.105). Como las
+  ramas se dibujan antes que el tallo, la unión queda tapada y el arco nace del
+  borde. Si se mueve una `union` hacia afuera, la rama queda flotando.
+- **Reversible**: cerrar la mano repliega las ramas y bajar el puño cierra la
+  flor de la punta; el arco vuelve a cero y la bolita regresa a la punta del
+  tallo. Abrir la mano antes de la altura máxima no adelanta nada.
+- **Comprobación sin cámara**: `plantaDebug.plantaDerecha()` devuelve
+  `{ cargada, piezas, crecimiento, llegoArriba, apertura, ramas, visibilidad,
+  floresDeRama, base, puntaTallo, puntaArco, florPunta, puntasDeRama }`. Con el
+  banco headless (canvas falso que graba las llamadas de dibujo y se repinta
+  fuera del navegador) se verificó: sin mano → 0; puño → brote con bolita;
+  puño arriba → apertura 1 y ramas 0; mano abierta → ramas 1 y las seis flores
+  abiertas; cerrar la mano → ramas 0 y la flor de la punta sigue abierta; bajar
+  el puño → apertura 0; `reiniciar()` → todo 0. La base quedó en `x = 0.79` del
+  ancho en todas las fases.
+
 ### Árbol colorido: mecanismo retirado del catálogo
 
 - El mecanismo de `paisaje: true` sigue existiendo en `planta.js` y
@@ -665,20 +743,25 @@ composición. La escena se parte en tres capas:
 - El temblor son **dos armónicos** (`FRECUENCIA_TEMBLOR` 0.019 rad/ms ≈ 3 Hz,
   más un segundo a 1.73× con 35 % de amplitud): se lee como un tallo que vibra,
   no como un metrónomo. `AMPLITUD_TEMBLOR` (0.06 rad) es el pico a intensidad 1.
-- Partículas: máximo `MAX_PARTICULAS` (160), emisión `EMISION_MAXIMA` por segundo
+- Partículas: máximo `MAX_PARTICULAS` (420), emisión `EMISION_MAXIMA` por segundo
   × intensidad. Cada una con tamaño, velocidad y vida aleatorios; frenan por
   roce y flotan hacia arriba. El alfa cae con la vida restante, así desaparecen
-  gradualmente.
+  gradualmente. El roce y la gravedad se pueden pisar por partícula
+  (`particula.roce` / `particula.gravedad`); el polen usa los de siempre.
 - **Destellos por dedos**: además del polen de la sacudida, si las puntas se
   agitan respecto de la muñeca (`VELOCIDAD_MINIMA_DEDOS` 0.55) la flor emite
-  brillitos (`MAX_DESTELLOS` 90, `EMISION_DESTELLOS` 55/s). Se miden las cinco
-  puntas relativas a la muñeca, así trasladar la mano entera no dispara nada.
-  Nacen alrededor del centro de la flor (`centroDeLaFlor()`), con halo suave y
+  brillitos a lo grande (`MAX_DESTELLOS` 300, `EMISION_DESTELLOS` 160/s). Se
+  miden las cinco puntas relativas a la muñeca, así trasladar la mano entera no
+  dispara nada. Nacen en un radio de 0.14 de `full` alrededor del centro de la
+  flor (`centroDeLaFlor()`) y **salen disparados hacia afuera**: rapidez
+  `escala·(0.7..1.5)`, roce 0.35 y gravedad 4, así viajan 150-300 px antes de
+  apagarse en vez de quedarse flotando. Halo suave (3× el núcleo, alfa 0.32) y
   núcleo que titila; son partículas con `destello: true`.
 - Verificado en Node: deriva lenta → 0 partículas; barrido en una dirección → 0;
-  sacudida real → intensidad 1.0 y 86 partículas; dedos agitados → 0.72 de
-  intensidad y 59 destellos; al parar → 0 en ~5 s y la altura de la planta
-  intacta.
+  sacudida real → intensidad 1.0 y 86 partículas; dedos agitados con la planta a
+  pleno → 234 destellos vivos en la planta derecha, a 92 px promedio y 216 px
+  como máximo del centro de la flor; al parar → 0 en ~5 s y la altura de la
+  planta intacta.
 
 ### Inclinación
 
