@@ -18,6 +18,11 @@ con ese crecimiento mientras haya manos en cuadro. El personaje que caminaba en
 el fondo se retiró. Del cuerpo se leen nariz, ojos, orejas, hombros, codos,
 muñecas y caderas; de las manos, los 21 puntos de cada una.
 
+**Música** (`sonido.js`): dos pistas que se cruzan solas. Una acompaña la escena
+gris y espera; la otra entra cuando las flores se abren y se va cuando las manos
+salen de cuadro. Necesita `musica-gris.mp3` y `musica-florecer.mp3` en la raíz,
+que **todavía no están en el repo**. Ver «Música».
+
 > Las cinco entradas anteriores del catálogo (`arbol_colorido`, `planta_azul`,
 > `planta_central`, `planta_morada`, `planta_naranja`) se retiraron de
 > `PLANTAS`. Sus PNG siguen en la carpeta pero ya no se cargan ni se dibujan.
@@ -59,6 +64,9 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `sketch.js` | `setup()` / `draw()` de p5.js en modo global, escenario y viento, cámara, Body Pose, Hand Pose y gestos |
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
 | `planta.js` | catálogo de plantas: crecimiento, floración, sacudida e inclinación, en su propia capa |
+| `sonido.js` | música de la experiencia: dos `<audio>` en bucle con cruce de volumen según el gris y la floración; ver «Música» |
+| `musica-gris.mp3` | pista de la espera, mientras todo está gris (**Hiraeth**, 5:46, 7,9 MB) |
+| `musica-florecer.mp3` | pista del momento en que se abren las flores (piano de **I See the Light**, loop de 61:40, 85 MB) |
 | `personaje.png` | sprite del ex personaje que caminaba en el fondo. **Ya no se carga** |
 | `personaje-feliz.png` | pose feliz del ex personaje. **Ya no se carga** |
 | `flor.png` | ilustración de la ex planta central. **Fuera del catálogo**: ya no se carga |
@@ -73,7 +81,7 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `fondo_gris_neblina.png` | paisaje de base: colinas, neblina y pasto en gris. Se dibuja siempre, abajo del atardecer |
 | `fondo_atardecer_color.png` | la misma composición a color. Se dibuja encima con la opacidad que marca el crecimiento; ver «Paisaje de fondo» |
 
-Cinco archivos de código y 63 imágenes en disco: las 20 piezas de la orquídea,
+Seis archivos de código y 63 imágenes en disco: las 20 piezas de la orquídea,
 las 14 de la planta de tres flores, las 20 de la planta derecha, los dos fondos
 y los PNG de las plantas retiradas que ya no se cargan, más la lámina de
 referencia. Si aparece un módulo nuevo, registrarlo en `index.html` en el orden
@@ -353,13 +361,97 @@ composición. La escena se parte en tres capas:
 - Colores del indicador duplicados a propósito entre `style.css` y el canvas:
   el canvas no lee variables CSS.
 
+## Música (`sonido.js`)
+
+> Las dos pistas van en la raíz, al lado de `index.html`, con esos nombres fijos
+> y en MP3 (no se busca ninguna extensión alternativa). Si falta una, la
+> experiencia anda igual: solo se pierde esa pista, con un aviso `[sonido]` en
+> consola y el archivo anotado en `sonidoDebug.faltantes()`.
+>
+> **El piano pesa 85 MB** (es un loop de 61:40). Ver «Precarga» abajo: por eso no
+> se carga entero al abrir la página.
+
+- **Dos estados, dos pistas, un solo cruce.** `musica-gris.mp3` es la espera:
+  suena mientras todo está gris y se queda hasta que la interacción con las manos
+  enciende el paisaje. `musica-florecer.mp3` es la recompensa: entra cuando las
+  flores se abren y se va cuando las manos salen de cuadro.
+- **El estado lo arma `sketch.js`**, no `sonido.js`. `estadoMusical()` devuelve
+  dos números de 0 a 1:
+  - `gris` = `1 - opacidadAtardecer`. El mismo dato que pinta el paisaje, así que
+    la música y el color no se pueden desincronizar.
+  - `floracion` = `floracionConManos()`: el mayor `florecimiento` **o**
+    `apertura` entre todas las plantas del catálogo, y **0 en seco si no hay
+    manos**. Ese corte es el pedido central: la planta conserva su altura y su
+    flor abierta cuando la mano se va —es su contrato—, pero el piano se va con
+    la mano. Se lee `apertura` además de `florecimiento` porque la orquídea y la
+    planta derecha publican ahí su flor de punta.
+- **El piano manda.** El pedido del gris es `gris * (1 - piano)`: mientras las
+  flores están abiertas la ciudad triste se corre a un lado de forma
+  proporcional, no se apaga de golpe. Cuando las manos salen, el paisaje vuelve a
+  gris y la ciudad triste vuelve sola.
+- **Curva del piano**: `curvaSuave()` entre `MUSICA.desde` (0.18) y
+  `MUSICA.hasta` (0.8). Debajo de `desde` no suena nada; a `hasta` ya está a
+  volumen pleno.
+- **Cada canal tiene su envolvente**: `1 - exp(-k·dt)` para la subida y para la
+  bajada, con la bajada más rápida en las dos pistas. Nada depende del
+  framerate. Los techos (`volumenGris` 0.45 y `volumenFlorecer` 0.6) son bajos a
+  propósito: suena solo, sin control a mano, y tiene que convivir con alguien
+  hablando al lado.
+- **Piso de silencio** (`MUSICA.silencio`): la exponencial se acerca a cero pero
+  nunca llega, y por debajo de eso no se oye nada. Al cruzarlo con el pedido en 0
+  se cierra el volumen y se pausa el elemento. Sin ese piso el `pause()` no
+  llegaba nunca y las dos pistas quedaban decodificando toda la sesión por un
+  volumen fantasma.
+- **Reproducir o pausar no es el estado, es la consecuencia.** Se pausa un
+  elemento cuando su volumen llega a cero (un `<audio>` en pausa no gasta
+  decodificador ni batería) y se reanuda solo cuando el estado lo vuelve a pedir.
+- **Precarga**: `MUSICA.precargaGris` en `'auto'` y `MUSICA.precargaFlorecer` en
+  `'metadata'`. La pista de la espera entra apenas se toca la página y conviene
+  tenerla lista; el piano son 85 MB, así que solo se pide la cabecera y se
+  transmite cuando las flores se abren. Con las dos en `'auto'` cada carga de
+  página se llevaba los 85 MB enteros. Ojo: con `'metadata'` el evento
+  `canplaythrough` no llega hasta que la pista suena, por eso `disponible` también
+  se marca con `loadedmetadata` — alcanza para saber que el archivo está y que el
+  códec se entiende.
+- **Vuelve a empezar por su primera nota**: en el flanco de encendido se pone
+  `currentTime = 0`, así el piano entra por el comienzo de la frase y no a mitad
+  de un compás. Es lo que hace que el momento se sienta intencional. Con un loop
+  de 61 minutos esto además significa que **siempre se oye el mismo arranque**; si
+  alguna vez se quiere oír la pieza entera, poner `MUSICA.reiniciarAlEmpezar` en
+  `false` y la pista retoma donde quedó.
+- **Autoplay**: el navegador deja el audio en pausa hasta el primer gesto real
+  del usuario. **Aceptar el permiso de cámara no cuenta.** Mientras tanto se
+  reintenta cada `MUSICA.reintentoMs` (400 ms) y no en cada frame, que serían 60
+  rechazos por segundo en la consola. El rechazo se descarta a propósito: no es
+  una falla, es la política del navegador. No hay botón de mute: si se agrega,
+  tiene que hablar con `sonidoDebug`, no con `elemento.volume` a mano.
+- **Por qué dos `<audio>` y no Web Audio**: una pista de tres minutos decodificada
+  ocupa decenas de MB y acá solo hace falta un volumen que sube y baja. Los
+  elementos se crean con `new Audio()` y **no se agregan al DOM**: viven sueltos,
+  que es válido y no cuesta layout. (A diferencia del `<video>`, un `<audio>`
+  suelto sí entrega sonido.)
+- **Si falta un archivo** no se adivina la causa: `describirErrorDeMedio()` traduce
+  el `MediaError` y el aviso nombra el archivo y el motivo. El canal queda con
+  `error` y se saltea el manejo de volumen, pero el objetivo se sigue calculando:
+  `sonidoDebug` muestra qué habría sonado.
+- **Reinicio**: `plantaDebug.reiniciar()` no toca la música. Al volver el
+  crecimiento a 0 el paisaje se apaga y la ciudad triste vuelve sola, con la
+  pista desde el principio.
+- **Comprobación sin cámara**: `sonidoDebug.estado()` devuelve `iniciada`,
+  `faltantes` y, por canal, `ruta`, `disponible`, `error`, `volumen` (lo que se
+  oye), `objetivo` (lo que pide el paisaje), `reproduciendo` y `tiempo`.
+  `sonidoDebug.probar({ gris: 1, floracion: 0 }, 2)` simula la música a 60 fps sin
+  abrir la cámara; `sonidoDebug.faltantes()` lista los archivos que no cargaron.
+
 ## Reglas
 
 - **Nada de bundler, npm, frameworks ni ES modules.** `sketch.js` es un script
   clásico: `import`/`export` rompen la página. p5 está en modo global
   (`setup`, `draw`, `createCanvas`, … son globales).
-- **Orden de carga en `index.html`**: p5.js → ml5.js → `sketch.js`.
-  `sketch.js` va último porque define `setup`/`draw` y usa `ml5` al inicializar.
+- **Orden de carga en `index.html`**: p5.js → ml5.js → `sonido.js` →
+  `sketch.js` → `debug-pose.js` → `planta.js`. `sketch.js` va después de
+  `sonido.js` porque `setup()` la pone en marcha, y antes de `planta.js` porque
+  `draw()` solo usa `plantaDebug` en tiempo de ejecución.
 - **Versiones pinneadas**: p5 `2.3.3` (jsDelivr) y ml5 `1.4.0` (unpkg).
   Actualizar es una decisión deliberada, nunca un efecto de copiar un `<script>`.
 - **ml5 pesa ~4.4 MB e incluye TensorFlow.js**: la primera carga tarda y el

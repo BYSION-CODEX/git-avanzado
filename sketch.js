@@ -54,6 +54,11 @@ function setup() {
 
   // El personaje que caminaba en el fondo se retiró de la escena.
 
+  // Música: dos pistas que se turnan según el paisaje y la floración. Los
+  // archivos se piden ya, en paralelo; hasta el primer gesto del usuario el
+  // navegador las deja en pausa y el volumen espera en cero.
+  if (typeof iniciarMusica === 'function') iniciarMusica();
+
   // La cámara se pide al final: si falla, el escenario ya está funcionando.
   iniciarCamara();
 }
@@ -72,6 +77,11 @@ function draw() {
   actualizarViento(dt);
   actualizarVida(dt);
   actualizarPaisajeInteractivo(dt);
+
+  // La música lee el mismo estado que ya se acaba de actualizar: el gris de la
+  // transición y la floración con manos en cuadro.
+  if (typeof actualizarMusica === 'function') actualizarMusica(dt, estadoMusical());
+
   dibujarEscenario(relojEscena, dt);
 }
 
@@ -653,6 +663,67 @@ function progresoDePlantas() {
   }
 
   return 0;
+}
+
+/**
+ * Floración que le importa a la música: la mayor entre todas las plantas,
+ * contada solo mientras haya manos en cuadro.
+ *
+ * El filtro de manos es el corazón del pedido: la planta conserva su altura y
+ * su flor abierta cuando la mano se va —ese es su contrato—, pero el piano
+ * tiene que irse con ella. Por eso acá se corta en seco a 0 en vez de leer el
+ * `florecimiento` que quedó guardado.
+ *
+ * Se toma también `apertura`, porque la orquídea y la planta derecha publican
+ * ahí su flor de punta y el catálogo no siempre llena `florecimiento`.
+ */
+function floracionConManos() {
+  if (typeof plantaDebug === 'undefined' || !plantaDebug) return 0;
+
+  const manos = typeof obtenerManos === 'function' ? obtenerManos() : null;
+  if (!manos || manos.length === 0) return 0;
+
+  if (typeof plantaDebug.plantas === 'function') {
+    const lista = plantaDebug.plantas();
+    let maximo = 0;
+
+    if (Array.isArray(lista)) {
+      for (const planta of lista) {
+        if (!planta) continue;
+        const flor = Math.max(
+          Number.isFinite(Number(planta.florecimiento)) ? Number(planta.florecimiento) : 0,
+          Number.isFinite(Number(planta.apertura)) ? Number(planta.apertura) : 0
+        );
+        if (flor > maximo) maximo = flor;
+      }
+    }
+
+    return constrain(maximo, 0, 1);
+  }
+
+  if (typeof plantaDebug.florecimiento === 'function') {
+    const valor = Number(plantaDebug.florecimiento());
+    return Number.isFinite(valor) ? constrain(valor, 0, 1) : 0;
+  }
+
+  return 0;
+}
+
+/**
+ * Estado que alimenta la música, en las dos únicas dimensiones que le importan.
+ *
+ * - `gris`: lo contrario de la opacidad del atardecer. Es 1 mientras la escena
+ *   está en neblina y baja sola cuando las manos encienden el paisaje.
+ * - `floracion`: ver `floracionConManos()`.
+ *
+ * `sonido.js` no lee globals: recibe esto ya resuelto y solo se ocupa del
+ * cruce entre las dos pistas.
+ */
+function estadoMusical() {
+  return {
+    gris: 1 - opacidadAtardecer,
+    floracion: floracionConManos(),
+  };
 }
 
 /**

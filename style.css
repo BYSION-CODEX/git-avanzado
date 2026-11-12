@@ -640,11 +640,72 @@ body[data-diagnostico="true"] .camara {
   }
 }
 
+/* ---------- Aviso para desbloquear el sonido ---------- */
+
+/*
+  El audio no arranca hasta el primer gesto del usuario, y aceptar el permiso de
+  la cámara no cuenta. Este botón flota abajo al centro y desaparece solo cuando
+  las pistas empiezan a sonar. `sonido.js` maneja el atributo `hidden`.
+*/
+.sonido-activar {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: clamp(14px, 2.4vh, 28px);
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  width: max-content;
+  margin-inline: auto;
+  padding: 0.62em 1.15em;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: rgba(26, 14, 29, 0.86);
+  color: var(--crema);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+  animation: sonido-latido 2.6s ease-in-out infinite;
+}
+
+/* `hidden` tiene que ganarle al `display: inline-flex` de arriba. */
+.sonido-activar[hidden] {
+  display: none;
+}
+
+.sonido-activar:hover {
+  border-color: rgba(237, 170, 203, 0.55);
+  background: rgba(38, 20, 42, 0.92);
+}
+
+.sonido-activar__icono {
+  color: var(--rosa);
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+@keyframes sonido-latido {
+  0%,
+  100% {
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38), 0 0 0 0 rgba(237, 170, 203, 0.22);
+  }
+  50% {
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38), 0 0 0 10px rgba(237, 170, 203, 0);
+  }
+}
+
 /* ---------- Accesibilidad ---------- */
 
 @media (prefers-reduced-motion: reduce) {
   .dato__barra i {
     transition: none;
+  }
+
+  .sonido-activar {
+    animation: none;
   }
 }
 

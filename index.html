@@ -277,6 +277,22 @@
       })();
     </script>
 
+    <!--
+      El navegador no deja sonar audio hasta que la persona toca algo de la
+      página, y aceptar el permiso de la cámara NO cuenta como ese gesto.
+      Esta es la invitación al primer toque: sonido.js la muestra solo mientras
+      el audio siga bloqueado y la esconde apenas las pistas arrancan.
+    -->
+    <button id="sonido-activar" class="sonido-activar" type="button" hidden>
+      <span class="sonido-activar__icono" aria-hidden="true">♪</span>
+      Activar el sonido
+    </button>
+
+    <!-- Música: dos pistas que se turnan. Va antes del sketch porque setup()
+         la pone en marcha, y espera `musica-gris.mp3` y `musica-florecer.mp3`
+         en la raíz del repo. -->
+    <script src="sonido.js"></script>
+
     <!-- Código del sketch: siempre último. -->
     <script src="sketch.js"></script>
 
