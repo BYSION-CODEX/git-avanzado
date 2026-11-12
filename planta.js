@@ -133,6 +133,104 @@
      */
   };
 
+  /* ---------- Tres flores: piezas y montaje ---------- */
+
+  /**
+   * La segunda planta del catálogo: una planta de tres flores montada con 14
+   * piezas. La geometría está en fracciones de `full` (alto máximo de la
+   * planta = `alto del lienzo * def.altura`) y salió de la lámina de los tres
+   * estados.
+   *
+   * La secuencia es: puño (brote y capullo) → subir el puño (tallo y flor
+   * principal) → mano abierta (ramas y flores laterales). El tallo se estira
+   * con el crecimiento; las ramas solo se despliegan cuando el tallo llegó a la
+   * punta y la mano está abierta.
+   */
+  const TRES_FLORES = {
+    /** El tallo crece entre estos dos largos (fracciones de `full`). */
+    talloMinimo: 0.2,
+    talloMaximo: 0.72,
+    /** El tallo nativo se angosta: se dibuja más fino que su proporción. */
+    talloAngosto: 0.45,
+    /** El tallo nativo ocupa 0.51 de su ancho en la punta y 0.69 en la base. */
+    talloPunta: 0.51,
+    talloBase: 0.69,
+    /** La flor principal se abre al llegar arriba, con puño o sin él. */
+    aperturaSegundos: 1.7,
+    cierreSegundos: 1.1,
+    /** La mano abierta despliega las ramas; cada flor se abre al final. */
+    ramasSegundos: 1,
+    cierreRamasSegundos: 0.7,
+    florRamaSegundos: 0.85,
+    ramasDesdeApertura: 0.55,
+    piezas: {
+      tallo: { archivo: 'tres-flores-tallo.png' },
+      hojaBaseIzquierda: { archivo: 'tres-flores-hoja-base-izquierda.png' },
+      hojaBaseDerechaAlta: { archivo: 'tres-flores-hoja-base-derecha-alta.png' },
+      hojaBaseDerechaBaja: { archivo: 'tres-flores-hoja-base-derecha-baja.png' },
+      hojaSuperiorIzquierda: { archivo: 'tres-flores-hoja-superior-izquierda.png' },
+      hojaPequenaDerecha: { archivo: 'tres-flores-hoja-pequena-derecha.png' },
+      ramaIzquierda: { archivo: 'tres-flores-rama-izquierda.png' },
+      ramaDerecha: { archivo: 'tres-flores-rama-derecha.png' },
+      florPrincipalAtras: { archivo: 'tres-flores-flor-principal-atras.png' },
+      florPrincipalFrente: { archivo: 'tres-flores-flor-principal-frente.png' },
+      florIzquierdaAtras: { archivo: 'tres-flores-flor-izquierda-atras.png' },
+      florIzquierdaFrente: { archivo: 'tres-flores-flor-izquierda-frente.png' },
+      florDerechaAtras: { archivo: 'tres-flores-flor-derecha-atras.png' },
+      florDerechaFrente: { archivo: 'tres-flores-flor-derecha-frente.png' },
+    },
+    /**
+     * Hojas de la base: van fuera del grupo que gira, clavadas en el suelo.
+     * `x`/`y` están en fracciones de `full`; `giro` corrige la orientación
+     * natural de cada PNG.
+     */
+    hojasBase: [
+      { clave: 'hojaBaseIzquierda', ancho: 0.36, x: -0.005, y: 0.0, giro: -0.28, ax: 0.96, ay: 0.97 },
+      { clave: 'hojaBaseDerechaAlta', ancho: 0.3, x: 0.012, y: 0.0, giro: 0.1, ax: 0.07, ay: 0.97 },
+      { clave: 'hojaBaseDerechaBaja', ancho: 0.34, x: 0.012, y: 0.004, giro: 0, ax: 0.06, ay: 0.93 },
+    ],
+    /**
+     * Hoja superior izquierda: se clava en el tallo a `t` de su largo actual,
+     * así acompaña el crecimiento en vez de flotar sobre un tallo corto.
+     */
+    hojaSuperior: { clave: 'hojaSuperiorIzquierda', ancho: 0.17, t: 0.62, giro: 0, ax: 0.94, ay: 0.93 },
+    /** Hoja pequeña derecha: se clava sobre la rama derecha, a `t` de su avance. */
+    hojaPequena: { clave: 'hojaPequenaDerecha', ancho: 0.14, t: 0.55, x: 0.02, giro: 0.35, ax: 0.06, ay: 0.94 },
+    /**
+     * Ramas: `ax`/`ay` es el extremo que se clava en el tallo y `tx`/`ty` la
+     * punta que cae en la flor. `anchoNativo`/`altoNativo` son los del PNG.
+     */
+    ramaIzquierda: { anchoNativo: 100, altoNativo: 102, ax: 0.94, ay: 0.95, tx: 0.03, ty: 0.03 },
+    ramaDerecha: { anchoNativo: 125, altoNativo: 129, ax: 0.08, ay: 0.93, tx: 0.92, ty: 0.06 },
+    /** Uniones en el tallo y puntas finales de cada rama (y positiva arriba). */
+    unionIzquierda: { x: -0.005, y: 0.42 },
+    puntaIzquierda: { x: -0.16, y: 0.52 },
+    unionDerecha: { x: 0.005, y: 0.38 },
+    puntaDerecha: { x: 0.145, y: 0.475 },
+    /**
+     * Cada flor son dos grupos: el trasero se dibuja primero y el frontal
+     * encima. `ax`/`ay` es su punto de unión (se clava en la punta); `x`/`y`
+     * es el desplazamiento respecto de esa punta ya abierta. Al cerrarse, ese
+     * desplazamiento se reduce y el grupo se encoge: así nace el capullo.
+     */
+    florPrincipal: {
+      atras: { clave: 'florPrincipalAtras', ancho: 0.28, ax: 0.5, ay: 0.98, x: 0.005, y: -0.005, escalaCerrada: 0.55, estiradoCerrado: 1.65 },
+      frente: { clave: 'florPrincipalFrente', ancho: 0.32, ax: 0.63, ay: 0.98, x: 0.0, y: 0.02, escalaCerrada: 0.5, estiradoCerrado: 1.65 },
+    },
+    florIzquierda: {
+      atras: { clave: 'florIzquierdaAtras', ancho: 0.145, ax: 0.74, ay: 0.98, x: -0.004, y: -0.004, escalaCerrada: 0.55, estiradoCerrado: 1.65 },
+      frente: { clave: 'florIzquierdaFrente', ancho: 0.17, ax: 0.4, ay: 0.98, x: 0.004, y: 0.012, escalaCerrada: 0.5, estiradoCerrado: 1.65 },
+    },
+    florDerecha: {
+      atras: { clave: 'florDerechaAtras', ancho: 0.195, ax: 0.5, ay: 0.98, x: 0.004, y: -0.004, escalaCerrada: 0.55, estiradoCerrado: 1.65 },
+      frente: { clave: 'florDerechaFrente', ancho: 0.225, ax: 0.63, ay: 0.98, x: 0.0, y: 0.012, escalaCerrada: 0.5, estiradoCerrado: 1.65 },
+    },
+    /** El grupo trasero abre primero; el frontal entra cuando aquel ya abrió. */
+    tiemposFlor: { atrasDesde: 0, atrasHasta: 0.55, frenteDesde: 0.5, frenteHasta: 1 },
+    /** La rama derecha arranca un poco después que la izquierda. */
+    retardoRamaDerecha: 0.18,
+  };
+
 
   /* ---------- Catálogo de plantas ---------- */
 
@@ -151,6 +249,29 @@
    */
   const PLANTAS = [
     {
+      id: 'tres_flores',
+      /**
+       * Planta de montaje: `personalizado` desvía el dibujo a
+       * `dibujarTresFlores()`. Comparte con la orquídea la detección de mano,
+       * la calibración de altura, la inclinación, la sacudida, el viento y las
+       * partículas; lo propio es su secuencia de tres flores.
+       *
+       * Va primera en la lista (se dibuja debajo) y a la izquierda de la
+       * escena. `altura` es menor que la de la orquídea para que las tres
+       * flores tengan aire alrededor y la protagonista siga siendo la central.
+       */
+      archivo: 'tres-flores-tallo.png',
+      personalizado: 'tres-flores',
+      x: 0.22,
+      altura: 0.4,
+      capaSuelo: 2,
+      separacionSuelo: 0.01,
+      talloX: 0.5,
+      faseViento: 1.4,
+      // Todas las piezas vienen con alfa: no hay fondo que recortar.
+      toleranciaFondo: 0,
+    },
+    {
       id: 'orquidea',
       /**
        * Es la única entrada de montaje: `personalizado` desvía el dibujo a
@@ -160,7 +281,8 @@
        */
       archivo: 'orquidea-tallo.png',
       personalizado: 'orquidea',
-      // Centrada y a escala de protagonista: es la única planta del catálogo.
+      principal: true,
+      // Centrada y a escala de protagonista.
       x: 0.5,
       altura: 0.44,
       capaSuelo: 2,
@@ -278,8 +400,8 @@
   /**
    * La planta que publica el porcentaje y la que lee sketch.js. Se marca con
    * `principal: true` en el catálogo; si ninguna lo declara, se usa la última.
-   * Hoy el catálogo tiene solo la orquídea, así que es ella la que alimenta el
-   * follaje y al personaje.
+   * La orquídea es la protagonista: su crecimiento alimenta el follaje y al
+   * personaje.
    */
   const principal =
     plantas.find((planta) => planta.def.principal) || plantas[plantas.length - 1];
@@ -288,7 +410,7 @@
     return {
       def,
       imagen: null,
-      partes: null, // solo la orquídea: piezas del montaje por clave
+      partes: null, // solo los montajes: piezas por clave
       partesListas: 0,
       lista: false,
       proporcion: 1, // ancho / alto, se lee al cargar la ilustración
@@ -296,6 +418,17 @@
       florecimiento: 0, // revelado de la corola 0..1
       // Secuencia propia de la orquídea. En las demás plantas queda en 0.
       orquidea: { llegoArriba: false, apertura: 0, ramas: 0, visibilidad: 0 },
+      // Secuencia propia de la planta de tres flores. En las demás queda en 0.
+      tresFlores: {
+        llegoArriba: false,
+        apertura: 0,
+        ramas: 0,
+        ramaIzquierda: 0,
+        ramaDerecha: 0,
+        florIzquierda: 0,
+        florDerecha: 0,
+        visibilidad: 0,
+      },
       particulas: [],
       acumuladorEmision: 0,
       acumuladorDestellos: 0,
@@ -333,6 +466,11 @@
       return;
     }
 
+    if (planta.def.personalizado === 'tres-flores') {
+      cargarTresFlores(planta);
+      return;
+    }
+
     const imagen = new Image();
     imagen.onload = () => {
       planta.proporcion = imagen.naturalWidth / imagen.naturalHeight;
@@ -349,12 +487,20 @@
   }
 
   /**
-   * Carga las piezas del montaje de la orquídea. Cada archivo entra a
-   * `planta.partes` con su clave; recién cuando terminaron todos (bien o mal)
-   * la planta queda `lista`, y las piezas que falten simplemente no se dibujan.
+   * Carga las piezas de un montaje. Cada archivo entra a `planta.partes` con su
+   * clave; recién cuando terminaron todos (bien o mal) la planta queda `lista`,
+   * y las piezas que falten simplemente no se dibujan.
    */
   function cargarOrquidea(planta) {
-    const piezas = Object.entries(ORQUIDEA.piezas);
+    cargarMontaje(planta, ORQUIDEA, 'la orquídea');
+  }
+
+  function cargarTresFlores(planta) {
+    cargarMontaje(planta, TRES_FLORES, 'la planta de tres flores');
+  }
+
+  function cargarMontaje(planta, montaje, etiqueta) {
+    const piezas = Object.entries(montaje.piezas);
     planta.partes = {};
     planta.partesListas = 0;
 
@@ -374,7 +520,7 @@
       };
       imagen.onerror = () => {
         console.warn(
-          '[planta] No se pudo cargar ' + pieza.archivo + '; falta esa pieza de la orquídea.'
+          '[planta] No se pudo cargar ' + pieza.archivo + '; falta esa pieza de ' + etiqueta + '.'
         );
         terminar();
       };
@@ -486,6 +632,7 @@
     actualizarCrecimiento(dt);
     actualizarFlorecimiento(dt);
     actualizarOrquidea(dt);
+    actualizarTresFlores(dt, ahora);
     actualizarInclinacion(dt);
     actualizarParticulas(dt, ahora);
   }
@@ -705,6 +852,91 @@
     if (paso <= 0 || actual === objetivo) return actual;
     if (Math.abs(objetivo - actual) <= paso) return objetivo;
     return actual + Math.sign(objetivo - actual) * paso;
+  }
+
+  /* ---------- Tres flores: secuencia ---------- */
+
+  /**
+   * Secuencia de la planta de tres flores:
+   *
+   *   1. con el puño aparece el brote (visibilidad) y el capullo principal en
+   *      la punta del tallo corto;
+   *   2. al llegar la punta se abre la flor principal, sin importar el gesto:
+   *      primero el grupo trasero y después el frontal;
+   *   3. con la mano abierta y la flor principal abierta crecen las ramas; cada
+   *      una abre su flor al llegar a su largo final.
+   *
+   * La apertura no adelanta el crecimiento: si la mano se abre antes de
+   * llegar, `objetivo` no cambia (no hay puño) y la altura se conserva.
+   */
+  function actualizarTresFlores(dt, ahora) {
+    const planta = plantas.find(
+      (candidata) => candidata.def.personalizado === 'tres-flores'
+    );
+    if (!planta) return;
+
+    const estado = planta.tresFlores;
+    const manos = typeof obtenerManos === 'function' ? obtenerManos() : [];
+    const hayMano = manos.length > 0;
+    const manoAbierta = manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
+    const hayPuno = manos.some((mano) => mano.gesto && mano.gesto.estado === 'cerrado');
+    const enLaPunta = planta.crecimiento >= 0.985;
+
+    estado.llegoArriba = enLaPunta;
+
+    const debeVerse =
+      hayMano &&
+      (hayPuno ||
+        planta.crecimiento > 0.001 ||
+        estado.apertura > 0.001 ||
+        estado.ramas > 0.001);
+    const objetivoVisibilidad = debeVerse ? 1 : 0;
+    const factorVisibilidad = 1 - Math.exp(-(objetivoVisibilidad ? 9 : 7) * dt);
+    estado.visibilidad += (objetivoVisibilidad - estado.visibilidad) * factorVisibilidad;
+    if (Math.abs(objetivoVisibilidad - estado.visibilidad) < 0.002) {
+      estado.visibilidad = objetivoVisibilidad;
+    }
+
+    // La flor principal se abre sola al llegar a la punta: no espera la mano
+    // abierta, porque el puño fue el que llevó el tallo hasta allí.
+    const objetivoApertura = enLaPunta ? 1 : 0;
+    const velocidadApertura =
+      objetivoApertura > estado.apertura
+        ? 1 / TRES_FLORES.aperturaSegundos
+        : 1 / TRES_FLORES.cierreSegundos;
+    estado.apertura = moverHacia(estado.apertura, objetivoApertura, velocidadApertura * dt);
+
+    // Las ramas necesitan la mano abierta, la punta y la flor principal ya
+    // abierta. Abrir la mano antes no regala ramas: se conserva la altura y se
+    // espera a que el puño complete la subida.
+    const ramasActivas =
+      enLaPunta && manoAbierta && estado.apertura >= TRES_FLORES.ramasDesdeApertura;
+    const objetivoRamas = ramasActivas ? 1 : 0;
+    const velocidadRamas =
+      objetivoRamas > estado.ramas
+        ? 1 / TRES_FLORES.ramasSegundos
+        : 1 / TRES_FLORES.cierreRamasSegundos;
+    estado.ramas = moverHacia(estado.ramas, objetivoRamas, velocidadRamas * dt);
+
+    // Cada rama crece con su propio retardo y abre su flor al llegar al final.
+    estado.ramaIzquierda = suavizar(limitar(estado.ramas / 0.82, 0, 1));
+    estado.ramaDerecha = suavizar(
+      limitar((estado.ramas - TRES_FLORES.retardoRamaDerecha) / 0.82, 0, 1)
+    );
+
+    const objetivoIzquierda = estado.ramaIzquierda >= 0.985 && ramasActivas ? 1 : 0;
+    const objetivoDerecha = estado.ramaDerecha >= 0.985 && ramasActivas ? 1 : 0;
+    const pasoFlor = dt / TRES_FLORES.florRamaSegundos;
+    estado.florIzquierda = moverHacia(
+      estado.florIzquierda,
+      objetivoIzquierda,
+      estado.florIzquierda < objetivoIzquierda ? pasoFlor : pasoFlor * 1.4
+    );
+    estado.florDerecha = moverHacia(
+      estado.florDerecha,
+      objetivoDerecha,
+      estado.florDerecha < objetivoDerecha ? pasoFlor : pasoFlor * 1.4
+    );
   }
 
   /* ---------- Inclinación ---------- */
@@ -1059,9 +1291,11 @@
     planta.particulas = planta.particulas.filter((particula) => particula.vida > 0);
   }
 
-  /** 0..1: la orquídea se oculta cuando no hay ninguna mano en cuadro. */
+  /** 0..1: los montajes se ocultan cuando no hay ninguna mano en cuadro. */
   function visibilidadDe(planta) {
-    return planta.def.personalizado === 'orquidea' ? planta.orquidea.visibilidad : 1;
+    if (planta.def.personalizado === 'orquidea') return planta.orquidea.visibilidad;
+    if (planta.def.personalizado === 'tres-flores') return planta.tresFlores.visibilidad;
+    return 1;
   }
 
   function emitirParticula(planta) {
@@ -1100,6 +1334,23 @@
    */
   function centroDeLaFlor(planta, ahora) {
     if (!anchoCSS || !altoCSS) return null;
+
+    if (planta.def.personalizado === 'tres-flores') {
+      const puntos = montajeTresFlores(planta, altoCSS, ahora);
+      const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
+      const angulo =
+        inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+      const cos = Math.cos(angulo);
+      const sin = Math.sin(angulo);
+      const localX = puntos.puntaTallo.x;
+      const localY = puntos.puntaTallo.y - puntos.full * 0.12;
+
+      return {
+        x: base.x + localX * cos - localY * sin,
+        y: base.y + localX * sin + localY * cos,
+        full: puntos.full,
+      };
+    }
 
     const full = altoCSS * planta.def.altura;
     const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
@@ -1207,6 +1458,11 @@
     // La orquídea no es una ilustración única: tiene su propio montaje.
     if (planta.def.personalizado === 'orquidea') {
       dibujarOrquidea(planta, ancho, alto, ahora, contexto);
+      return;
+    }
+
+    if (planta.def.personalizado === 'tres-flores') {
+      dibujarTresFlores(planta, ancho, alto, ahora, contexto);
       return;
     }
 
@@ -1328,14 +1584,16 @@
    * Dibuja una pieza del montaje anclada en `(cx, cy)`.
    *
    * `ancho` es el ancho dibujado; el alto sale de la proporción real del PNG.
+   * `escalaY` estira o comprime solo la vertical: el capullo lo usa para
+   * cerrarse en una yema alta sin cambiar el ancho de los pétalos.
    * `ax`/`ay` eligen qué punto del dibujo queda clavado en el esqueleto, así
    * la pieza gira desde su base (hojas) o desde su unión (pétalos, ramas).
    */
-  function dibujarParte(c, imagen, cx, cy, ancho, giro, ax, ay, alfa) {
+  function dibujarParte(c, imagen, cx, cy, ancho, giro, ax, ay, alfa, escalaY = 1) {
     if (!imagen || ancho <= 0) return;
     if (alfa !== undefined && alfa <= 0.001) return;
 
-    const alto = ancho * (imagen.naturalHeight / imagen.naturalWidth);
+    const alto = ancho * (imagen.naturalHeight / imagen.naturalWidth) * escalaY;
     c.save();
     if (alfa !== undefined) c.globalAlpha *= alfa;
     c.translate(cx, cy);
@@ -1597,6 +1855,305 @@
     c.restore(); // visibilidad de la orquídea
   }
 
+  /* ---------- Tres flores: geometría y dibujo ---------- */
+
+  /**
+   * Puntos del montaje en coordenadas LOCALES del grupo del tallo (origen en
+   * la base, y negativa hacia arriba). La usan el dibujo y `plantaDebug`, así
+   * la flor y su rama comparten exactamente la misma punta: no hay dos
+   * geometrías que se puedan desincronizar.
+   */
+  function montajeTresFlores(planta, alto, ahora) {
+    const full = alto * planta.def.altura;
+    const estado = planta.tresFlores;
+
+    const largo =
+      (TRES_FLORES.talloMinimo +
+        (TRES_FLORES.talloMaximo - TRES_FLORES.talloMinimo) * planta.crecimiento) *
+      full;
+    const tallo =
+      planta.partes && planta.partes.tallo
+        ? planta.partes.tallo.naturalWidth / planta.partes.tallo.naturalHeight
+        : 0.111;
+    const anchoTallo = largo * tallo * TRES_FLORES.talloAngosto;
+
+    const puntaTallo = {
+      x: (TRES_FLORES.talloPunta - TRES_FLORES.talloBase) * anchoTallo,
+      y: -largo,
+    };
+
+    const unionIzquierda = {
+      x: TRES_FLORES.unionIzquierda.x * full,
+      y: -TRES_FLORES.unionIzquierda.y * full,
+    };
+    const unionDerecha = {
+      x: TRES_FLORES.unionDerecha.x * full,
+      y: -TRES_FLORES.unionDerecha.y * full,
+    };
+    const finalIzquierda = {
+      x: TRES_FLORES.puntaIzquierda.x * full,
+      y: -TRES_FLORES.puntaIzquierda.y * full,
+    };
+    const finalDerecha = {
+      x: TRES_FLORES.puntaDerecha.x * full,
+      y: -TRES_FLORES.puntaDerecha.y * full,
+    };
+
+    // La rama crece desde su unión; la flor se dibuja en ESA misma punta.
+    const actualIzquierda = {
+      x: unionIzquierda.x + (finalIzquierda.x - unionIzquierda.x) * estado.ramaIzquierda,
+      y: unionIzquierda.y + (finalIzquierda.y - unionIzquierda.y) * estado.ramaIzquierda,
+    };
+    const actualDerecha = {
+      x: unionDerecha.x + (finalDerecha.x - unionDerecha.x) * estado.ramaDerecha,
+      y: unionDerecha.y + (finalDerecha.y - unionDerecha.y) * estado.ramaDerecha,
+    };
+
+    const puntaIzquierda = puntaConVaiven(
+      actualIzquierda,
+      ahora,
+      2.2,
+      estado.ramaIzquierda,
+      full
+    );
+    const puntaDerecha = puntaConVaiven(actualDerecha, ahora, 4.1, estado.ramaDerecha, full);
+
+    return {
+      full,
+      largo,
+      anchoTallo,
+      puntaTallo,
+      unionIzquierda,
+      unionDerecha,
+      puntaIzquierda,
+      puntaDerecha,
+    };
+  }
+
+  /**
+   * La planta de tres flores completa. Comparte con la orquídea el crecimiento,
+   * la inclinación, la sacudida, el viento y las partículas; lo propio es el
+   * montaje: tallo que se estira, capullo principal y dos ramas que abren su
+   * flor en la punta.
+   */
+  function dibujarTresFlores(planta, ancho, alto, ahora, contexto = ctx) {
+    const piezas = planta.partes;
+    if (!piezas || !piezas.tallo) return;
+
+    const estado = planta.tresFlores;
+    if (estado.visibilidad <= 0.002) return;
+
+    const c = contexto || ctx;
+    const base = baseDeLaPlanta(planta.def, ancho, alto);
+    const puntos = montajeTresFlores(planta, alto, ahora);
+    const full = puntos.full;
+
+    c.save();
+    c.globalAlpha *= estado.visibilidad;
+
+    // ---- hojas de la base: fijas, no acompañan el balanceo del tallo ----
+    for (const hoja of TRES_FLORES.hojasBase) {
+      dibujarParte(
+        c,
+        piezas[hoja.clave],
+        base.x + hoja.x * full,
+        base.y + hoja.y * full,
+        hoja.ancho * full,
+        hoja.giro,
+        hoja.ax,
+        hoja.ay
+      );
+    }
+
+    c.save();
+
+    // Todo lo que nace del tallo pivota en la base: el suelo queda quieto.
+    const anguloPlanta =
+      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    c.translate(base.x, base.y);
+    c.rotate(anguloPlanta);
+
+    // ---- ramas: van detrás del tallo, así la unión queda limpia ----
+    if (estado.ramaIzquierda > 0.01) {
+      dibujarRama(
+        c,
+        piezas.ramaIzquierda,
+        TRES_FLORES.ramaIzquierda,
+        puntos.unionIzquierda,
+        puntos.puntaIzquierda,
+        Math.min(1, estado.ramaIzquierda * 3)
+      );
+    }
+    if (estado.ramaDerecha > 0.01) {
+      dibujarRama(
+        c,
+        piezas.ramaDerecha,
+        TRES_FLORES.ramaDerecha,
+        puntos.unionDerecha,
+        puntos.puntaDerecha,
+        Math.min(1, estado.ramaDerecha * 3)
+      );
+    }
+
+    // ---- tallo: se estira con el crecimiento ----
+    c.drawImage(
+      piezas.tallo,
+      -TRES_FLORES.talloBase * puntos.anchoTallo,
+      -puntos.largo,
+      puntos.anchoTallo,
+      puntos.largo
+    );
+
+    // ---- hoja superior izquierda: clavada en el tallo actual ----
+    const hojaSuperior = TRES_FLORES.hojaSuperior;
+    const despliegueHoja = suavizar(limitar(planta.crecimiento / 0.15, 0, 1));
+    if (despliegueHoja > 0.001) {
+      dibujarParte(
+        c,
+        piezas[hojaSuperior.clave],
+        puntos.puntaTallo.x * hojaSuperior.t,
+        puntos.puntaTallo.y * hojaSuperior.t,
+        hojaSuperior.ancho * full * (0.6 + 0.4 * despliegueHoja),
+        hojaSuperior.giro,
+        hojaSuperior.ax,
+        hojaSuperior.ay,
+        despliegueHoja
+      );
+    }
+
+    // ---- flor principal: brote con el puño, flor abierta en la punta ----
+    dibujarFlorMontada(
+      c,
+      piezas,
+      TRES_FLORES.florPrincipal,
+      puntos.puntaTallo,
+      estado.apertura,
+      full,
+      ahora,
+      0.4
+    );
+
+    // ---- hoja pequeña derecha: sobre la rama, debajo de su flor ----
+    if (estado.ramaDerecha > 0.45) {
+      const hojaPequena = TRES_FLORES.hojaPequena;
+      const t = suavizar(limitar((estado.ramaDerecha - 0.45) / 0.3, 0, 1));
+      const puntoHoja = {
+        x:
+          puntos.unionDerecha.x +
+          (puntos.puntaDerecha.x - puntos.unionDerecha.x) * hojaPequena.t +
+          hojaPequena.x * full,
+        y:
+          puntos.unionDerecha.y +
+          (puntos.puntaDerecha.y - puntos.unionDerecha.y) * hojaPequena.t,
+      };
+      dibujarParte(
+        c,
+        piezas[hojaPequena.clave],
+        puntoHoja.x,
+        puntoHoja.y,
+        hojaPequena.ancho * full * (0.5 + 0.5 * t),
+        hojaPequena.giro,
+        hojaPequena.ax,
+        hojaPequena.ay,
+        t
+      );
+    }
+
+    // ---- flores laterales: en la punta exacta de cada rama ----
+    if (estado.ramaIzquierda > 0.01) {
+      dibujarFlorMontada(
+        c,
+        piezas,
+        TRES_FLORES.florIzquierda,
+        puntos.puntaIzquierda,
+        estado.florIzquierda,
+        full,
+        ahora,
+        1.9,
+        Math.min(1, estado.ramaIzquierda * 3)
+      );
+    }
+    if (estado.ramaDerecha > 0.01) {
+      dibujarFlorMontada(
+        c,
+        piezas,
+        TRES_FLORES.florDerecha,
+        puntos.puntaDerecha,
+        estado.florDerecha,
+        full,
+        ahora,
+        3.3,
+        Math.min(1, estado.ramaDerecha * 3)
+      );
+    }
+
+    c.restore(); // grupo del tallo
+    c.restore(); // visibilidad
+  }
+
+  /**
+   * Una flor de dos grupos. El trasero se dibuja primero y el frontal encima,
+   * siempre anclados en la misma punta: la del tallo o la de la rama.
+   */
+  function dibujarFlorMontada(c, piezas, flor, punto, apertura, full, ahora, fase, alfa = 1) {
+    const tiempos = TRES_FLORES.tiemposFlor;
+    dibujarGrupoFlor(
+      c,
+      piezas,
+      flor.atras,
+      punto,
+      apertura,
+      tiempos.atrasDesde,
+      tiempos.atrasHasta,
+      full,
+      ahora,
+      fase,
+      alfa
+    );
+    dibujarGrupoFlor(
+      c,
+      piezas,
+      flor.frente,
+      punto,
+      apertura,
+      tiempos.frenteDesde,
+      tiempos.frenteHasta,
+      full,
+      ahora,
+      fase + 1.7,
+      alfa
+    );
+  }
+
+  /**
+   * Un grupo de pétalos. Al cerrarse no solo se encoge: su desplazamiento
+   * respecto de la punta también se reduce, así los dos grupos se acercan y el
+   * capullo queda armado con las mismas piezas de la flor abierta.
+   */
+  function dibujarGrupoFlor(c, piezas, grupo, punto, apertura, desde, hasta, full, ahora, fase, alfa) {
+    const imagen = piezas[grupo.clave];
+    if (!imagen) return;
+
+    const t = suavizar(limitar((apertura - desde) / (hasta - desde), 0, 1));
+    const escala = grupo.escalaCerrada + (1 - grupo.escalaCerrada) * t;
+    const estirado = 1 + ((grupo.estiradoCerrado || 1) - 1) * (1 - t);
+    const cercania = 0.25 + 0.75 * t;
+    const vaiven = Math.sin(ahora * 0.0011 + fase) * 0.02 * t;
+
+    dibujarParte(
+      c,
+      imagen,
+      punto.x + grupo.x * full * cercania,
+      punto.y + grupo.y * full * cercania,
+      grupo.ancho * full * escala,
+      vaiven,
+      grupo.ax,
+      grupo.ay,
+      alfa,
+      estirado
+    );
+  }
+
   /** Curva de suavizado corta, reutilizada por el montaje. */
   function suavizar(t) {
     return t * t * (3 - 2 * t);
@@ -1678,6 +2235,14 @@
       planta.orquidea.apertura = 0;
       planta.orquidea.ramas = 0;
       planta.orquidea.visibilidad = 0;
+      planta.tresFlores.llegoArriba = false;
+      planta.tresFlores.apertura = 0;
+      planta.tresFlores.ramas = 0;
+      planta.tresFlores.ramaIzquierda = 0;
+      planta.tresFlores.ramaDerecha = 0;
+      planta.tresFlores.florIzquierda = 0;
+      planta.tresFlores.florDerecha = 0;
+      planta.tresFlores.visibilidad = 0;
     }
   }
 
@@ -1697,14 +2262,22 @@
       plantas.map((planta) => ({
         id: planta.def.id,
         archivo: planta.def.archivo,
+        x: planta.def.x,
+        altura: planta.def.altura,
         cargada: planta.lista,
         crecimiento: planta.crecimiento,
         florecimiento: planta.florecimiento,
         particulas: planta.particulas.length,
         proporcion: planta.proporcion,
-        // Solo la orquídea los usa; en el resto quedan en 0.
-        apertura: planta.orquidea.apertura,
-        ramas: planta.orquidea.ramas,
+        // Cada montaje publica su propia apertura y sus ramas.
+        apertura:
+          planta.def.personalizado === 'tres-flores'
+            ? planta.tresFlores.apertura
+            : planta.orquidea.apertura,
+        ramas:
+          planta.def.personalizado === 'tres-flores'
+            ? planta.tresFlores.ramas
+            : planta.orquidea.ramas,
       })),
     crecimientoDe: (id) => {
       const planta = plantas.find((candidata) => candidata.def.id === id);
@@ -1728,6 +2301,66 @@
         ramas: planta.orquidea.ramas,
         visibilidad: planta.orquidea.visibilidad,
       };
+    },
+    /**
+     * Estado de la planta de tres flores. Además de la secuencia, devuelve la
+     * base y las puntas en coordenadas de pantalla: son las mismas que usa el
+     * dibujo, así se puede comprobar que la flor y su rama no se separan.
+     */
+    tresFlores: (ahoraMs) => {
+      const planta = plantas.find((candidata) => candidata.def.id === 'tres_flores');
+      if (!planta) return null;
+
+      const estado = planta.tresFlores;
+      const tiempos = TRES_FLORES.tiemposFlor;
+      const salida = {
+        cargada: planta.lista,
+        piezas: planta.partes ? Object.keys(planta.partes).length : 0,
+        crecimiento: planta.crecimiento,
+        llegoArriba: estado.llegoArriba,
+        apertura: estado.apertura,
+        aperturaAtras: suavizar(
+          limitar(
+            (estado.apertura - tiempos.atrasDesde) / (tiempos.atrasHasta - tiempos.atrasDesde),
+            0,
+            1
+          )
+        ),
+        aperturaFrente: suavizar(
+          limitar(
+            (estado.apertura - tiempos.frenteDesde) / (tiempos.frenteHasta - tiempos.frenteDesde),
+            0,
+            1
+          )
+        ),
+        ramas: estado.ramas,
+        ramaIzquierda: estado.ramaIzquierda,
+        ramaDerecha: estado.ramaDerecha,
+        florIzquierda: estado.florIzquierda,
+        florDerecha: estado.florDerecha,
+        visibilidad: estado.visibilidad,
+      };
+
+      if (!anchoCSS || !altoCSS) return salida;
+
+      const ahora = typeof ahoraMs === 'number' ? ahoraMs : ultimoFrame;
+      const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
+      const puntos = montajeTresFlores(planta, altoCSS, ahora);
+      const angulo =
+        inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+      const cos = Math.cos(angulo);
+      const sin = Math.sin(angulo);
+      const aPantalla = (punto) => ({
+        x: base.x + punto.x * cos - punto.y * sin,
+        y: base.y + punto.x * sin + punto.y * cos,
+      });
+
+      salida.base = { x: base.x, y: base.y };
+      salida.puntaTallo = aPantalla(puntos.puntaTallo);
+      salida.puntaIzquierda = aPantalla(puntos.puntaIzquierda);
+      salida.puntaDerecha = aPantalla(puntos.puntaDerecha);
+
+      return salida;
     },
     /**
      * Vuelve todo el jardín al estado inicial: es el "reiniciar" de la
