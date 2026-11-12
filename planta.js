@@ -33,6 +33,15 @@
   /** Histéresis de nivel: cuánto hay que pasar el borde para cambiar. */
   const MARGEN_NIVEL = 0.03;
 
+  /**
+   * Base uniforme de las plantas: mismo margen desde el borde inferior del
+   * lienzo, sin tocar el borde. Ya no siguen la curva del suelo porque lo que
+   * importa es que el tulipán y la orquídea queden parejos y lejos del bosque.
+   */
+  const BASE_PLANTAS = {
+    margenInferior: 0.06,
+  };
+
   /** Por encima de esta velocidad de muñeca, la altura de la planta no cambia. */
   const VELOCIDAD_CONGELAMIENTO_NIVEL = 1.2;
 
@@ -121,8 +130,10 @@
     ramaDerecha: { archivo: 'orquidea-rama-derecha.png', anchoNativo: 2202, altoNativo: 1832, ax: 0.06, ay: 0.96, tx: 0.94, ty: 0.04 },
     ramaIzquierda: { archivo: 'orquidea-rama-izquierda.png', anchoNativo: 2199, altoNativo: 1984, ax: 0.94, ay: 0.98, tx: 0.06, ty: 0.02 },
     // Puntos del esqueleto, en fracciones de `full` con origen en la base.
-    unionDerecha: { x: 0.011, y: 0.4 },
-    unionIzquierda: { x: 0, y: 0.345 },
+    // La x sale del centro del tallo curvado a esa altura: si se ancla sobre el
+    // eje vertical del montaje, la rama queda flotando a la derecha del tallo.
+    unionDerecha: { x: -0.0175, y: 0.4 },
+    unionIzquierda: { x: -0.02, y: 0.345 },
     centroAzul: { x: 0.185, y: 0.565 },
     centroCapulloLateral: { x: -0.195, y: 0.505 },
     /**
@@ -263,9 +274,7 @@
       archivo: 'tres-flores-tallo.png',
       personalizado: 'tres-flores',
       x: 0.22,
-      altura: 0.4,
-      capaSuelo: 2,
-      separacionSuelo: 0.01,
+      altura: 0.46,
       talloX: 0.5,
       faseViento: 1.4,
       // Todas las piezas vienen con alfa: no hay fondo que recortar.
@@ -284,9 +293,7 @@
       principal: true,
       // Centrada y a escala de protagonista.
       x: 0.5,
-      altura: 0.44,
-      capaSuelo: 2,
-      separacionSuelo: 0.01,
+      altura: 0.5,
       talloX: 0.5,
       faseViento: 3.6,
       // Todo el montaje viene con alfa: no hay fondo que recortar.
@@ -782,20 +789,18 @@
   /* ---------- Orquídea: secuencia ---------- */
 
   /**
-   * La flor solo se muestra abierta cuando se juntan DOS condiciones:
+   * La secuencia de la orquídea es:
    *
-   *   1. el tallo está en la punta (crecimiento >= 0.985);
-   *   2. hay una mano abierta.
+   *   1. el tallo crece con el puño cerrado;
+   *   2. al llegar a la punta (crecimiento >= 0.985) se abre la FLOR PRINCIPAL,
+   *      con puño o sin él: el final del crecimiento, no de la floración;
+   *   3. con la mano abierta en la punta se despliegan las RAMAS, la flor azul,
+   *      el capullo lateral y la hoja pequeña. Solo las ramas dependen de la
+   *      mano abierta.
    *
-   * Si falta cualquiera de las dos, la orquídea vuelve a su estado normal de
-   * planta crecida: el capullo cerrado en la punta del tallo y sin ramas. La
-   * apertura NO es acumulativa: es reversible. Si el puño baja, la flor se
+   * La apertura NO es acumulativa: es reversible. Si el puño baja, la flor se
    * cierra y vuelve a ser capullo, porque si no el capullo/flor quedaría
-   * estirado sobre un tallo más corto.
-   *
-   * `ramas` sigue a `apertura` con la misma lógica: abrir la mano en la punta
-   * despliega ramas, flor azul, capullo lateral y hoja pequeña; cerrar la mano
-   * (o bajar) las repliega.
+   * estirado sobre un tallo más corto. Cerrar la mano repliega solo las ramas.
    */
   function actualizarOrquidea(dt) {
     const planta = plantas.find((candidata) => candidata.def.personalizado === 'orquidea');
@@ -821,9 +826,11 @@
       estado.visibilidad = objetivoVisibilidad;
     }
 
-    // Abrir es más lento que cerrar: la flor se despliega pétalo por pétalo,
-    // pero cuando la mano se va o el tallo baja, se recoge enseguida.
-    const objetivoApertura = enLaPunta && manoAbierta ? 1 : 0;
+    // La flor principal se abre al llegar a la punta, con puño o sin él: es el
+    // final del crecimiento, no de la floración. Solo las ramas esperan a que
+    // la mano se abra. Abrir es más lento que cerrar: la flor se despliega
+    // pétalo por pétalo, pero si el tallo baja se recoge enseguida.
+    const objetivoApertura = enLaPunta ? 1 : 0;
     const velocidadApertura =
       objetivoApertura > estado.apertura
         ? 1 / ORQUIDEA.aperturaSegundos
@@ -2164,23 +2171,16 @@
   }
 
   /**
-   * Dónde nace la planta: sobre el borde real de la capa de suelo cercana.
-   * bordeDeSuelo() y CAPAS_SUELO vienen de sketch.js, así que la base coincide
-   * con la tierra dibujada y no queda flotando. La x y la altura salen de la
-   * entrada del catálogo, no de un valor global.
+   * Dónde nace la planta: a una separación uniforme del borde inferior del
+   * lienzo (`BASE_PLANTAS.margenInferior`). Las dos comparten la misma base,
+   * así el tulipán y la orquídea quedan parejos y alejados del bosque. La x y
+   * la altura salen de la entrada del catálogo, no de un valor global.
    */
   function baseDeLaPlanta(def, ancho, alto) {
-    const x = ancho * def.x;
-    const horizonte = alto * 0.54;
-
-    if (typeof bordeDeSuelo === 'function' && typeof CAPAS_SUELO !== 'undefined') {
-      return {
-        x,
-        y: bordeDeSuelo(x, CAPAS_SUELO[def.capaSuelo], horizonte) + alto * def.separacionSuelo,
-      };
-    }
-
-    return { x, y: horizonte + alto * 0.28 };
+    return {
+      x: ancho * def.x,
+      y: alto - alto * BASE_PLANTAS.margenInferior,
+    };
   }
 
   /* ---------- Lectura en pantalla ---------- */
@@ -2264,6 +2264,8 @@
         archivo: planta.def.archivo,
         x: planta.def.x,
         altura: planta.def.altura,
+        // Misma base uniforme que usa el dibujo; sirve para centrar la oleada.
+        base: anchoCSS && altoCSS ? baseDeLaPlanta(planta.def, anchoCSS, altoCSS) : null,
         cargada: planta.lista,
         crecimiento: planta.crecimiento,
         florecimiento: planta.florecimiento,
