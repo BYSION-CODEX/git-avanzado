@@ -411,23 +411,23 @@ composición. La escena se parte en tres capas:
 - `sketch.js` no dibuja las plantas: solo lee `plantaDebug` para el follaje, la
   vida del bosque y la transición del paisaje.
 - **Un catálogo, no un caso especial.** `PLANTAS` en `planta.js` es una lista de
-  plantas; cada entrada define `id`, `archivo`, `x`, `altura`, `capaSuelo`,
-  `separacionSuelo`, `talloX`, `faseViento`, `toleranciaFondo` y `corola`. La
+  plantas; cada entrada define `id`, `archivo`, `x`, `altura`, `talloX`,
+  `faseViento`, `toleranciaFondo` y `corola`. La
   interacción —crecimiento, floración, sacudida, inclinación y viento— es **una
   sola** y la comparten todas. Para sumar otra planta alcanza con agregar un
   objeto a la lista; no hay que tocar ninguna interacción.
-- **Profundidad = orden de la lista + capa de suelo**. La lista se dibuja de
-  atrás hacia adelante (la primera queda debajo) y `capaSuelo` decide de qué
-  franja del terreno nace: `0` lejos, `1` medio, `2` cerca. La planta de tres
-  flores va primera y en la capa `2`; la orquídea va última, también en la capa
-  `2`, así la protagonista queda encima.
+- **Base uniforme**: `BASE_PLANTAS.margenInferior` (0.06) deja a todas las
+  plantas con el mismo margen desde el borde inferior del lienzo, sin tocarlo.
+  Ya no siguen la curva del suelo: la base pareja las separa del bosque. La
+  lista se dibuja de atrás hacia adelante (la primera queda debajo); la planta de
+  tres flores va primera y la orquídea última, así la protagonista queda encima.
 - **Cada planta tiene su propio estado**: imagen, proporción, `crecimiento`,
   `florecimiento` y partículas. El objetivo lo calculan las manos una vez y cada
   planta lo alcanza con su suavizado, así no comparten la variable de dibujo.
 - **Sumar otra planta**: (1) copiar el PNG recortado con el nombre
   `planta-<color>.png`; (2) agregar un objeto a `PLANTAS` con `id`, `archivo`,
-  `x`, `altura`, `capaSuelo`, `toleranciaFondo` y su `corola`, en la posición de
-  la lista que le corresponde por profundidad; (3) nada más. No hace falta tocar
+  `x`, `altura`, `toleranciaFondo` y su `corola`, en la posición de la lista que
+  le corresponde por profundidad; (3) nada más. No hace falta tocar
   gestos, `sketch.js`, `index.html` ni la cámara. El orden de la lista es el de
   dibujo: la primera queda debajo. Para una planta **de montaje** (varias piezas
   animadas por separado), además hay que sumar su config y su función de dibujo,
@@ -471,18 +471,18 @@ composición. La escena se parte en tres capas:
   más alto.
 - La animación usa amortiguación exponencial (`1 - exp(-k*dt)`), no un lerp con
   alfa fijo: el crecimiento es fluido y no depende del framerate.
-- La base se ancla con `bordeDeSuelo()` y `CAPAS_SUELO` de `sketch.js`, en la
-  capa que declara cada planta, así nace sobre la tierra dibujada y no flota.
+- La base es uniforme: `BASE_PLANTAS.margenInferior` (0.06) la deja a 6 % del
+  borde inferior del lienzo, pareja para todas y sin tocarlo.
 - `window.plantaDebug.nivelDesdeAltura(y)` expone el mapeo para comprobarlo
   desde la consola; `plantaDebug.plantas()` y `crecimientoDe(id)` muestran el
-  estado de cada una.
+  estado de cada una, incluida su `base` en píxeles.
 - Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
   0.20 → 100%, y el mapeo es monótono en toda la banda.
 
 ### Orquídea: montaje de piezas y flor reversible
 
-- Es **la entrada central** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.5`,
-  `capaSuelo: 2`), centrada en la composición. No es una ilustración única:
+- Es **la entrada central** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.5`),
+  centrada en la composición. No es una ilustración única:
   `personalizado: 'orquidea'` desvía el dibujo a `dibujarOrquidea()`. La
   interacción compartida —crecimiento, inclinación, sacudida, viento y
   partículas— es la misma; lo propio es el montaje y su estado.
@@ -559,8 +559,8 @@ composición. La escena se parte en tres capas:
 
 ### Planta de tres flores: montaje lateral y secuencia de tres gestos
 
-- Es la segunda entrada del catálogo (`id: 'tres_flores'`, `x: 0.22`, `altura: 0.46`,
-  `capaSuelo: 2`). Va **primera en `PLANTAS`** (se dibuja debajo) y a la
+- Es la segunda entrada del catálogo (`id: 'tres_flores'`, `x: 0.22`, `altura: 0.46`).
+  Va **primera en `PLANTAS`** (se dibuja debajo) y a la
   izquierda de la pantalla, lejos de la orquídea. La orquídea conserva
   `principal: true`, así el porcentaje y el follaje siguen leyendo su crecimiento.
 - **14 piezas** en `TRES_FLORES.piezas`, en fracciones de `full = alto * 0.46`.

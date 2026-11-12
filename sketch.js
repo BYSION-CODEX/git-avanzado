@@ -1626,15 +1626,17 @@ function dibujarDestellosHorizonte(t) {
 }
 
 /**
- * Centro aproximado de la flor de una planta: su base sobre el relieve de la
- * capa cercana, subida por la altura declarada. El dibujo final vive en
+ * Centro aproximado de la flor de una planta: su base uniforme (la misma que
+ * usa planta.js) subida por la altura declarada. El dibujo final vive en
  * `#planta-overlay`, así que lo que se pinte acá queda detrás.
  */
 function centroDePlanta(planta) {
-  const x = width * (Number(planta && planta.x) || 0.5);
   const alto = (Number(planta && planta.altura) || 0.4) * height;
-  const base = bordeDeSuelo(x, CAPAS_SUELO[2], horizonteEscena);
-  return { x, y: base - alto * 0.82 };
+  const base = planta && planta.base;
+  const x = base && Number.isFinite(Number(base.x)) ? Number(base.x) : width * (Number(planta && planta.x) || 0.5);
+  // Respaldo mientras planta.js todavía no publicó la base.
+  const yBase = base && Number.isFinite(Number(base.y)) ? Number(base.y) : height * 0.94;
+  return { x, y: yBase - alto * 0.82 };
 }
 
 /** Centros de todas las plantas del catálogo (con respaldo si no hay ninguna). */

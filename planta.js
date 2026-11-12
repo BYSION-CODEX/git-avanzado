@@ -33,6 +33,15 @@
   /** Histéresis de nivel: cuánto hay que pasar el borde para cambiar. */
   const MARGEN_NIVEL = 0.03;
 
+  /**
+   * Base uniforme de las plantas: mismo margen desde el borde inferior del
+   * lienzo, sin tocar el borde. Ya no siguen la curva del suelo porque lo que
+   * importa es que el tulipán y la orquídea queden parejos y lejos del bosque.
+   */
+  const BASE_PLANTAS = {
+    margenInferior: 0.06,
+  };
+
   /** Por encima de esta velocidad de muñeca, la altura de la planta no cambia. */
   const VELOCIDAD_CONGELAMIENTO_NIVEL = 1.2;
 
@@ -264,8 +273,6 @@
       personalizado: 'tres-flores',
       x: 0.22,
       altura: 0.46,
-      capaSuelo: 2,
-      separacionSuelo: 0.01,
       talloX: 0.5,
       faseViento: 1.4,
       // Todas las piezas vienen con alfa: no hay fondo que recortar.
@@ -285,8 +292,6 @@
       // Centrada y a escala de protagonista.
       x: 0.5,
       altura: 0.5,
-      capaSuelo: 2,
-      separacionSuelo: 0.01,
       talloX: 0.5,
       faseViento: 3.6,
       // Todo el montaje viene con alfa: no hay fondo que recortar.
@@ -2164,23 +2169,16 @@
   }
 
   /**
-   * Dónde nace la planta: sobre el borde real de la capa de suelo cercana.
-   * bordeDeSuelo() y CAPAS_SUELO vienen de sketch.js, así que la base coincide
-   * con la tierra dibujada y no queda flotando. La x y la altura salen de la
-   * entrada del catálogo, no de un valor global.
+   * Dónde nace la planta: a una separación uniforme del borde inferior del
+   * lienzo (`BASE_PLANTAS.margenInferior`). Las dos comparten la misma base,
+   * así el tulipán y la orquídea quedan parejos y alejados del bosque. La x y
+   * la altura salen de la entrada del catálogo, no de un valor global.
    */
   function baseDeLaPlanta(def, ancho, alto) {
-    const x = ancho * def.x;
-    const horizonte = alto * 0.54;
-
-    if (typeof bordeDeSuelo === 'function' && typeof CAPAS_SUELO !== 'undefined') {
-      return {
-        x,
-        y: bordeDeSuelo(x, CAPAS_SUELO[def.capaSuelo], horizonte) + alto * def.separacionSuelo,
-      };
-    }
-
-    return { x, y: horizonte + alto * 0.28 };
+    return {
+      x: ancho * def.x,
+      y: alto - alto * BASE_PLANTAS.margenInferior,
+    };
   }
 
   /* ---------- Lectura en pantalla ---------- */
@@ -2264,6 +2262,8 @@
         archivo: planta.def.archivo,
         x: planta.def.x,
         altura: planta.def.altura,
+        // Misma base uniforme que usa el dibujo; sirve para centrar la oleada.
+        base: anchoCSS && altoCSS ? baseDeLaPlanta(planta.def, anchoCSS, altoCSS) : null,
         cargada: planta.lista,
         crecimiento: planta.crecimiento,
         florecimiento: planta.florecimiento,

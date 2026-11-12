@@ -96,3 +96,10 @@ Branch: `main` · Delivery: single-pr · Runner: Chrome headless por CDP (sin c�
 - `ARBOLES.alfa = 0.5` aplicado con `tint()` al sprite y `globalAlpha` al follaje.
 - Plantas agrandadas para leer como primer plano: orquídea `altura` 0.44 → 0.50 y tres flores 0.40 → 0.46. La base no se movió; el montaje escala completo porque `full = alto * def.altura`.
 - Verificación headless repetida: crecimiento 1, `opacidadAtardecer` 1, floración y oleadas siguen funcionando, reinicio en 0.
+
+### L5 — base uniforme cerca del borde inferior (2026-11-11)
+
+- Pedido del usuario: bajar el tulipán y la orquídea, con la misma separación del borde inferior y sin tocarlo, para alejarlos de los árboles del fondo.
+- `BASE_PLANTAS.margenInferior = 0.06` en `planta.js`: `baseDeLaPlanta()` ya no sigue `bordeDeSuelo()`; ambas plantas comparten `y = alto - alto * 0.06`.
+- Se quitaron `capaSuelo` y `separacionSuelo` del catálogo (quedaron sin uso). `plantaDebug.plantas()` publica `base` en píxeles y la oleada la usa para centrarse.
+- Verificado en headless: base `y = 659.88` para las dos con lienzo de 702 px (42 px de margen); la secuencia de crecimiento, floración y reinicio sigue igual.
