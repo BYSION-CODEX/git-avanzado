@@ -35,6 +35,8 @@ verifica con el banco headless en Node (`plantaDebug.paso`).
 - T3 (S1-S2) entrada del catálogo, visibilidad, centro de la flor, debug y reinicio. — inline
 - T4 (S3-S8) verificación headless + documentación en `AGENTS.md`. — inline
 
+Estado: T1-T4 hechas. Commit `a680897` en `feature/planta-derecha`.
+
 ## Log
 
 ### L1 — pedido original (verbatim, recortado por el usuario)
