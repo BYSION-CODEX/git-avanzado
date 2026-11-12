@@ -542,6 +542,11 @@ composición. La escena se parte en tres capas:
   ancla en el extremo inferior y gira para que el extremo superior caiga en la
   punta. La flor azul y el capullo lateral usan esa misma punta con
   `puntaConVaiven()`, así nunca se separan.
+- **La unión va sobre el centro del tallo curvado**: el tallo es una imagen
+  ancha que se curva, así que su eje real a 0.4 / 0.345 de `full` no está en
+  `x = 0` sino en `x ≈ -0.0175 / -0.02`. `unionDerecha` y `unionIzquierda`
+  usan esos valores; con la x en 0 las ramas quedaban flotando a la derecha del
+  tallo o lo atravesaban.
 - **Sin reinicio previo en el proyecto**: no había teclado, botón ni gesto de
   reinicio. Se agregó `plantaDebug.reiniciar()`, que devuelve la orquídea al
   estado de una carga limpia. Recargar la página también reinicia, porque no se

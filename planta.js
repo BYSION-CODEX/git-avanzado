@@ -130,8 +130,10 @@
     ramaDerecha: { archivo: 'orquidea-rama-derecha.png', anchoNativo: 2202, altoNativo: 1832, ax: 0.06, ay: 0.96, tx: 0.94, ty: 0.04 },
     ramaIzquierda: { archivo: 'orquidea-rama-izquierda.png', anchoNativo: 2199, altoNativo: 1984, ax: 0.94, ay: 0.98, tx: 0.06, ty: 0.02 },
     // Puntos del esqueleto, en fracciones de `full` con origen en la base.
-    unionDerecha: { x: 0.011, y: 0.4 },
-    unionIzquierda: { x: 0, y: 0.345 },
+    // La x sale del centro del tallo curvado a esa altura: si se ancla sobre el
+    // eje vertical del montaje, la rama queda flotando a la derecha del tallo.
+    unionDerecha: { x: -0.0175, y: 0.4 },
+    unionIzquierda: { x: -0.02, y: 0.345 },
     centroAzul: { x: 0.185, y: 0.565 },
     centroCapulloLateral: { x: -0.195, y: 0.505 },
     /**

@@ -103,3 +103,10 @@ Branch: `main` · Delivery: single-pr · Runner: Chrome headless por CDP (sin c�
 - `BASE_PLANTAS.margenInferior = 0.06` en `planta.js`: `baseDeLaPlanta()` ya no sigue `bordeDeSuelo()`; ambas plantas comparten `y = alto - alto * 0.06`.
 - Se quitaron `capaSuelo` y `separacionSuelo` del catálogo (quedaron sin uso). `plantaDebug.plantas()` publica `base` en píxeles y la oleada la usa para centrarse.
 - Verificado en headless: base `y = 659.88` para las dos con lienzo de 702 px (42 px de margen); la secuencia de crecimiento, floración y reinicio sigue igual.
+
+### L6 — unión de las ramas de la orquídea (2026-11-11)
+
+- El usuario reportó que las ramas se veían desviadas y sueltas.
+- Verificación con zoom real (Edge headless, ramas = 1, anclaje rotado por la inclinación) y análisis de alfa del PNG del tallo: a la altura de las uniones, la banda visible del tallo está en `x ≈ [-0.0286, -0.0064]` (derecha) y `[-0.0312, -0.0090]` (izquierda) de `full`, no en `x = 0`.
+- `unionDerecha` pasó de `0.011` a `-0.0175` y `unionIzquierda` de `0` a `-0.02`: quedan sobre el centro del tallo a esa altura.
+- Capturas 15/16 a 16×: las dos ramas nacen dentro de la silueta del tallo, sin flotar ni atravesarlo.
