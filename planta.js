@@ -419,7 +419,7 @@
    */
     /**
    * Una copia del fondo: la misma planta, más chica, con la base corrida hacia
-   * arriba y al 80 % de opacidad, movida solo por la mano de las copias.
+   * arriba y al 60 % de opacidad, movida solo por la mano de las copias.
    */
   function copiaDeFondo(id, archivo, personalizado, x, altura, levantar, faseViento) {
     return {
@@ -427,7 +427,7 @@
       archivo,
       personalizado,
       mano: MANO_COPIAS,
-      opacidad: 0.8,
+      opacidad: 0.6,
       limiteParticulas: 60,
       x,
       altura,

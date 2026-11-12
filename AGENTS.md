@@ -10,7 +10,7 @@ gestos (mano abierta / puño) + **tres plantas interactivas**: la orquídea
 (centrada, montada con 20 piezas), la **planta de tres flores** (a la izquierda,
 montada con 14 piezas) y la **planta derecha** (a la derecha, montada con 20
 piezas y su propia secuencia de arcos y flores colgantes) + **seis copias de
-fondo** de esas tres plantas, más chicas, más lejanas y al 80 % de opacidad, que
+fondo** de esas tres plantas, más chicas, más lejanas y al 60 % de opacidad, que
 se mueven con la mano izquierda + **paisaje de fondo en
 dos PNG** que pasa de gris con neblina a atardecer a color siguiendo el
 crecimiento + nubes y destellos en una capa intermedia + árboles que reverdecen
@@ -439,7 +439,7 @@ composición. La escena se parte en tres capas:
   base de una entrada (fracción del alto) para que las copias se lean más lejos.
 - **Copias del fondo**: seis entradas con `mano: MANO_COPIAS` (dos de cada
   planta), más chicas (`altura` 0.24–0.34), corridas hacia arriba (`levantar`
-  0.03–0.10) y al 80 % de opacidad (`opacidad`), dibujadas debajo de las
+  0.03–0.10) y al 60 % de opacidad (`opacidad`), dibujadas debajo de las
   principales. Responden **solo a la mano izquierda**, así el campo se ve lleno
   sin que las protagonistas pierdan el mando. Llevan `limiteParticulas: 60` para
   que seis montajes no cuesten caro al agitar los dedos.
