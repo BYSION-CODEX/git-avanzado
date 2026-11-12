@@ -3,94 +3,248 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Experiencia interactiva de conciencia ambiental: la naturaleza se regenera con tus movimientos." />
+    <meta name="description" content="El cambio florece contigo: una experiencia interactiva donde tus gestos hacen florecer el paisaje." />
     <meta name="color-scheme" content="dark" />
     <title>El cambio florece contigo</title>
+
+    <!-- Tipografía del título: Sirivennela (Google Fonts). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sirivennela&display=swap"
+      rel="stylesheet"
+    />
 
     <!-- Estilos propios. Una sola hoja, sin frameworks ni resets externos. -->
     <link rel="stylesheet" href="style.css" />
   </head>
 
   <body>
-    <!-- Contenedor principal de la experiencia interactiva. -->
+    <!--
+      Dos columnas 1:2. A la izquierda el relato y los controles; a la derecha
+      el lienzo, que se queda con casi todo el alto disponible.
+    -->
     <main id="experiencia" class="experiencia">
-      <header class="experiencia__encabezado">
-        <h1 class="experiencia__titulo">El cambio florece contigo</h1>
-        <p class="experiencia__bajada">
-          Experiencia de conciencia ambiental: tus movimientos devuelven la vida al paisaje.
-        </p>
-      </header>
+      <section class="columna" aria-labelledby="titulo">
+        <header class="marca">
+          <h1 id="titulo" class="marca__titulo">El cambio florece contigo</h1>
+        </header>
 
-      <!-- Dos espacios reservados: cámara a la izquierda, lienzo p5 a la derecha. -->
-      <div class="experiencia__escenario">
         <!--
-          Espacio para la cámara.
-          El <video> lo crea p5.js (createCapture) y sketch.js lo monta dentro
-          de #camara-marco. El atributo data-estado lo maneja el sketch:
+          Cuatro gestos de lectura rápida. Cada icono dibuja las dos manos y
+          las flechas solo aparecen cuando ayudan a entender el movimiento.
+          El rótulo dice únicamente qué hacer: se puede probar con una mano o
+          con las dos.
+        -->
+        <section class="gestos" aria-labelledby="gestos-titulo">
+          <h2 id="gestos-titulo" class="gestos__titulo">Cómo se juega</h2>
+
+          <ol class="gestos__lista">
+            <li class="gesto">
+              <figure class="gesto__figura">
+                <svg class="gesto__icono" viewBox="0 0 64 34" aria-hidden="true" focusable="false">
+                  <g fill="currentColor">
+                    <rect x="8" y="13" width="13" height="13" rx="6" />
+                    <rect x="9.6" y="9.5" width="3.2" height="5" rx="1.6" />
+                    <rect x="13.8" y="8.6" width="3.2" height="6" rx="1.6" />
+                    <rect x="18" y="9.4" width="3.2" height="5.2" rx="1.6" />
+                    <rect x="6" y="17" width="4.6" height="7" rx="2.3" transform="rotate(-14 8.3 20.5)" />
+                    <g transform="translate(64 0) scale(-1 1)">
+                      <rect x="8" y="13" width="13" height="13" rx="6" />
+                      <rect x="9.6" y="9.5" width="3.2" height="5" rx="1.6" />
+                      <rect x="13.8" y="8.6" width="3.2" height="6" rx="1.6" />
+                      <rect x="18" y="9.4" width="3.2" height="5.2" rx="1.6" />
+                      <rect x="6" y="17" width="4.6" height="7" rx="2.3" transform="rotate(-14 8.3 20.5)" />
+                    </g>
+                  </g>
+                </svg>
+                <figcaption class="gesto__rotulo">Muestra tus puños</figcaption>
+              </figure>
+            </li>
+
+            <li class="gesto">
+              <figure class="gesto__figura">
+                <svg class="gesto__icono" viewBox="0 0 64 34" aria-hidden="true" focusable="false">
+                  <g fill="currentColor">
+                    <rect x="8" y="17" width="13" height="13" rx="6" />
+                    <rect x="9.6" y="13.5" width="3.2" height="5" rx="1.6" />
+                    <rect x="13.8" y="12.6" width="3.2" height="6" rx="1.6" />
+                    <rect x="18" y="13.4" width="3.2" height="5.2" rx="1.6" />
+                    <rect x="6" y="21" width="4.6" height="7" rx="2.3" transform="rotate(-14 8.3 24.5)" />
+                    <g transform="translate(64 0) scale(-1 1)">
+                      <rect x="8" y="17" width="13" height="13" rx="6" />
+                      <rect x="9.6" y="13.5" width="3.2" height="5" rx="1.6" />
+                      <rect x="13.8" y="12.6" width="3.2" height="6" rx="1.6" />
+                      <rect x="18" y="13.4" width="3.2" height="5.2" rx="1.6" />
+                      <rect x="6" y="21" width="4.6" height="7" rx="2.3" transform="rotate(-14 8.3 24.5)" />
+                    </g>
+                  </g>
+                  <g class="gesto__flecha" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14.5 11V1.5M11.5 4.5 14.5 1.5l3 3" />
+                    <path d="M49.5 11V1.5M46.5 4.5 49.5 1.5l3 3" />
+                  </g>
+                </svg>
+                <figcaption class="gesto__rotulo">Eleva los puños</figcaption>
+              </figure>
+            </li>
+
+            <li class="gesto">
+              <figure class="gesto__figura">
+                <svg class="gesto__icono" viewBox="0 0 64 34" aria-hidden="true" focusable="false">
+                  <g fill="currentColor">
+                    <rect x="8.6" y="15" width="12.6" height="14" rx="5.4" />
+                    <rect x="8.6" y="4" width="3" height="12" rx="1.5" />
+                    <rect x="12.8" y="2" width="3" height="14" rx="1.5" />
+                    <rect x="17" y="3.2" width="3" height="13" rx="1.5" />
+                    <rect x="21.2" y="6" width="3" height="10.6" rx="1.5" />
+                    <rect x="4" y="16" width="5.4" height="9" rx="2.7" transform="rotate(-26 6.7 20.5)" />
+                    <g transform="translate(64 0) scale(-1 1)">
+                      <rect x="8.6" y="15" width="12.6" height="14" rx="5.4" />
+                      <rect x="8.6" y="4" width="3" height="12" rx="1.5" />
+                      <rect x="12.8" y="2" width="3" height="14" rx="1.5" />
+                      <rect x="17" y="3.2" width="3" height="13" rx="1.5" />
+                      <rect x="21.2" y="6" width="3" height="10.6" rx="1.5" />
+                      <rect x="4" y="16" width="5.4" height="9" rx="2.7" transform="rotate(-26 6.7 20.5)" />
+                    </g>
+                  </g>
+                </svg>
+                <figcaption class="gesto__rotulo">Abre las manos</figcaption>
+              </figure>
+            </li>
+
+            <li class="gesto">
+              <figure class="gesto__figura">
+                <svg class="gesto__icono" viewBox="0 0 64 34" aria-hidden="true" focusable="false">
+                  <g fill="currentColor">
+                    <rect x="19" y="15" width="12.6" height="14" rx="5.4" />
+                    <rect x="19" y="4" width="3" height="12" rx="1.5" />
+                    <rect x="23.2" y="2" width="3" height="14" rx="1.5" />
+                    <rect x="27.4" y="3.2" width="3" height="13" rx="1.5" />
+                    <rect x="31.6" y="6" width="3" height="10.6" rx="1.5" />
+                    <rect x="14.4" y="16" width="5.4" height="9" rx="2.7" transform="rotate(-26 17.1 20.5)" />
+                    <g transform="translate(64 0) scale(-1 1)">
+                      <rect x="9.7" y="15" width="12.6" height="14" rx="5.4" />
+                      <rect x="9.7" y="4" width="3" height="12" rx="1.5" />
+                      <rect x="13.9" y="2" width="3" height="14" rx="1.5" />
+                      <rect x="18.1" y="3.2" width="3" height="13" rx="1.5" />
+                      <rect x="22.3" y="6" width="3" height="10.6" rx="1.5" />
+                      <rect x="5.1" y="16" width="5.4" height="9" rx="2.7" transform="rotate(-26 7.8 20.5)" />
+                    </g>
+                  </g>
+                  <g class="gesto__flecha" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 12H2M5 8.5 1.5 12l3.5 3.5" />
+                    <path d="M51 12h11M58 8.5 61.5 12 58 15.5" />
+                  </g>
+                </svg>
+                <figcaption class="gesto__rotulo">Mueve las manos</figcaption>
+              </figure>
+            </li>
+          </ol>
+        </section>
+
+        <!--
+          Dos filas compactas: una por grupo de plantas. Cada fila muestra la
+          cifra grande, la etiqueta chica y una barra discreta.
+        -->
+        <section class="indicadores" aria-label="Crecimiento y floración por grupo">
+          <div id="indicadores-derecha" class="indicador" data-grupo="derecha">
+            <span class="indicador__mano" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8.4 12.5V6.6a1.4 1.4 0 0 1 2.8 0v5.1" />
+                  <path d="M11.2 11.7V5.2a1.4 1.4 0 0 1 2.8 0v6.5" />
+                  <path d="M14 11.7V6.6a1.4 1.4 0 0 1 2.8 0v6.1" />
+                  <path d="M16.8 12.7V9.4a1.3 1.3 0 0 1 2.6 0v6.1c0 3.5-2.3 5.9-5.6 5.9-2.4 0-4-.9-5.2-2.7l-2.6-4a1.4 1.4 0 0 1 2.3-1.6l1.7 2" />
+                </g>
+              </svg>
+            </span>
+            <div class="indicador__cuerpo">
+              <div class="dato">
+                <span id="crecimiento-derecha" class="dato__cifra">0%</span>
+                <span class="dato__etiqueta">Crecimiento</span>
+                <span class="dato__barra" aria-hidden="true"><i></i></span>
+              </div>
+              <div class="dato">
+                <span id="floracion-derecha" class="dato__cifra">0%</span>
+                <span class="dato__etiqueta">Floración</span>
+                <span class="dato__barra" aria-hidden="true"><i></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div id="indicadores-izquierda" class="indicador" data-grupo="izquierda">
+            <span class="indicador__mano indicador__mano--espejo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8.4 12.5V6.6a1.4 1.4 0 0 1 2.8 0v5.1" />
+                  <path d="M11.2 11.7V5.2a1.4 1.4 0 0 1 2.8 0v6.5" />
+                  <path d="M14 11.7V6.6a1.4 1.4 0 0 1 2.8 0v6.1" />
+                  <path d="M16.8 12.7V9.4a1.3 1.3 0 0 1 2.6 0v6.1c0 3.5-2.3 5.9-5.6 5.9-2.4 0-4-.9-5.2-2.7l-2.6-4a1.4 1.4 0 0 1 2.3-1.6l1.7 2" />
+                </g>
+              </svg>
+            </span>
+            <div class="indicador__cuerpo">
+              <div class="dato">
+                <span id="crecimiento-izquierda" class="dato__cifra">0%</span>
+                <span class="dato__etiqueta">Crecimiento</span>
+                <span class="dato__barra" aria-hidden="true"><i></i></span>
+              </div>
+              <div class="dato">
+                <span id="floracion-izquierda" class="dato__cifra">0%</span>
+                <span class="dato__etiqueta">Floración</span>
+                <span class="dato__barra" aria-hidden="true"><i></i></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!--
+          Cámara, abajo a la izquierda. El <video> lo crea p5.js
+          (createCapture) y sketch.js lo monta dentro de #camara-marco.
+          El atributo data-estado lo maneja el sketch:
             iniciando -> pide permiso     lista -> stream andando
             error     -> no hubo acceso
-
-          El marco es 16:9 a propósito: al coincidir con la proporción que se
-          le pide a la cámara, la imagen entra completa y no se recorta nada
-          por los costados (que es donde quedan las manos al abrir los brazos).
+          El marco es 16:9 a propósito: coincide con la proporción de la cámara
+          y el recorte de object-fit no toca los costados (donde van las manos).
         -->
-        <section id="camara" class="panel" aria-labelledby="camara-titulo">
-          <h2 id="camara-titulo" class="panel__titulo">Cámara</h2>
-          <div
-            id="camara-contenedor"
-            class="panel__contenido panel__contenido--camara"
-            data-estado="iniciando"
-          >
+        <section id="camara" class="camara" aria-label="Cámara">
+          <div id="camara-contenedor" class="camara__contenedor" data-estado="iniciando">
             <div id="camara-marco" class="camara__marco">
-              <p id="camara-mensaje" class="panel__nota">Solicitando permiso para usar la cámara…</p>
+              <p id="camara-mensaje" class="camara__mensaje">Solicitando permiso para usar la cámara…</p>
               <!-- Modo depuración: esqueleto de Body Pose encima del video.
                    Lo dibuja debug-pose.js. pointer-events: none. -->
               <canvas id="pose-overlay" class="camara__overlay" aria-hidden="true"></canvas>
             </div>
+          </div>
 
-            <!-- Estado del reconocimiento corporal. data-estado lo maneja el sketch. -->
-            <p id="pose-estado" class="camara__pose" data-estado="inactivo">
-              Cuerpo: esperando cámara…
-            </p>
+          <!-- Avisos públicos: solo lo necesario para poder interactuar. -->
+          <p id="pose-estado" class="camara__aviso" data-estado="inactivo" aria-live="polite">
+            Colócate frente a la cámara
+          </p>
+          <p id="manos-estado" class="camara__aviso" data-estado="inactivo" aria-live="polite" hidden></p>
 
-            <!-- Cuántas manos se están detectando. -->
-            <p id="manos-estado" class="camara__pose" data-estado="inactivo">
-              Manos: esperando cámara…
-            </p>
-
-            <!-- Gesto reconocido de cada mano. -->
+          <!-- Modo diagnóstico: detalles de seguimiento, gestos por mano y la
+               tabla de coordenadas. Ocultos para el público. -->
+          <div class="diagnostico">
+            <p id="pose-detalle" class="camara__detalle"></p>
+            <p id="manos-detalle" class="camara__detalle"></p>
             <ul id="gestos-estado" class="camara__gestos" hidden></ul>
-
-            <!-- Porcentaje de crecimiento durante las pruebas. -->
-            <p id="crecimiento-estado" class="camara__pose" data-estado="inactivo">
-              Crecimiento: 0%
-            </p>
-
-            <p class="camara__guia">
-              Encuadre de busto: cabeza, hombros y manos dentro del recuadro. Si tus manos
-              salen del marco, alejate un poco de la cámara.
-            </p>
-
-            <!-- Lectura de x, y y confianza de cada punto del tren superior. -->
             <pre id="pose-puntos" class="camara__puntos" hidden></pre>
           </div>
         </section>
+      </section>
 
-        <!--
-          Espacio para el lienzo de p5.js.
-          El canvas se crea en sketch.js y se ancla a este contenedor, por eso
-          acá no hay <canvas> escrito a mano.
-        -->
-        <section id="lienzo" class="panel" aria-labelledby="lienzo-titulo">
-          <h2 id="lienzo-titulo" class="panel__titulo">Lienzo</h2>
-          <div id="lienzo-contenedor" class="panel__contenido panel__contenido--lienzo">
-            <!-- Capa de las plantas: se anima por encima del paisaje estático de p5.
-                 Una sola capa para todas; el catálogo vive en planta.js.
-                 p5 agrega su propio canvas a este mismo contenedor. -->
-            <canvas id="planta-overlay" class="planta__lienzo" aria-hidden="true"></canvas>
-          </div>
-        </section>
-      </div>
+      <!--
+        Lienzo de p5.js. El canvas se crea en sketch.js y se ancla a este
+        contenedor, por eso acá no hay <canvas> escrito a mano.
+      -->
+      <section id="lienzo" class="lienzo" aria-label="Paisaje interactivo">
+        <div id="lienzo-contenedor" class="lienzo__contenedor">
+          <!-- Capa de las plantas: se anima por encima del paisaje de p5.
+               Una sola capa para todas; el catálogo vive en planta.js. -->
+          <canvas id="planta-overlay" class="planta__lienzo" aria-hidden="true"></canvas>
+        </div>
+      </section>
     </main>
 
     <!-- p5.js: obligatorio antes de sketch.js (define setup/draw). -->
@@ -103,11 +257,31 @@
     -->
     <script src="https://unpkg.com/ml5@1.4.0/dist/ml5.min.js"></script>
 
+    <!--
+      Modo diagnóstico: con ?diagnostico=1 en la URL (o la tecla D) se muestran
+      la tabla de puntos, las confianzas y los gestos por mano. Es solo una
+      clase en <body>; el CSS decide qué se ve.
+    -->
+    <script>
+      (function () {
+        const parametros = new URLSearchParams(location.search);
+        const activo = parametros.get('diagnostico') === '1' || parametros.get('debug') === '1';
+        if (activo) document.body.dataset.diagnostico = 'true';
+
+        addEventListener('keydown', (evento) => {
+          if (evento.key !== 'd' && evento.key !== 'D') return;
+          if (evento.target && /^(INPUT|TEXTAREA)$/.test(evento.target.tagName)) return;
+          document.body.dataset.diagnostico =
+            document.body.dataset.diagnostico === 'true' ? 'false' : 'true';
+        });
+      })();
+    </script>
+
     <!-- Código del sketch: siempre último. -->
     <script src="sketch.js"></script>
 
-    <!-- Modo depuración visual de Body Pose. Para la presentación final:
-         borrar esta línea (o poner DEPURACION_POSE = false dentro del archivo). -->
+    <!-- Modo depuración visual de Body Pose: solo dibuja en modo diagnóstico
+         (?diagnostico=1 o la tecla D). Para no cargarlo nunca, borrar esta línea. -->
     <script src="debug-pose.js"></script>
 
     <!-- Planta: crecimiento con el gesto de puño, en su propia capa. -->

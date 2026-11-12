@@ -30,7 +30,9 @@ de respaldo y un chequeo de `navigator.permissions`.
 
 Estados del reconocimiento en `#pose-estado` (`data-estado` = `inactivo`,
 `parcial`, `listo`, `error`). La tabla `#pose-puntos` muestra x, y y confianza
-de cada punto, y se repinta a ~8 Hz, no en cada frame.
+de cada punto, y se repinta a ~8 Hz, no en cada frame. Todo eso vive ahora en el
+**modo diagnóstico** (`?diagnostico=1` o la tecla D); la interfaz pública solo
+muestra los avisos para poder interactuar. Ver «Interfaz».
 
 ## Ejecutar
 
@@ -52,8 +54,8 @@ otro servidor estático (Live Server de VS Code también sirve).
 
 | Archivo | Rol |
 |---|---|
-| `index.html` | documento único: contenedor principal, espacio de cámara, espacio de lienzo y carga de librerías |
-| `style.css` | todos los estilos de la interfaz |
+| `index.html` | documento único: relato, gestos, indicadores, cámara, lienzo y carga de librerías |
+| `style.css` | todos los estilos de la interfaz: grilla 1:2, paleta y modo diagnóstico |
 | `sketch.js` | `setup()` / `draw()` de p5.js en modo global, escenario y viento, cámara, Body Pose, Hand Pose y gestos |
 | `debug-pose.js` | modo depuración: esqueleto del cuerpo y de las manos sobre la cámara |
 | `planta.js` | catálogo de plantas: crecimiento, floración, sacudida e inclinación, en su propia capa |
@@ -286,6 +288,53 @@ composición. La escena se parte en tres capas:
   así que cualquier margen transparente abajo lo hace flotar. El `personaje.png`
   actual está recortado (758×1271, con alfa).
 
+## Interfaz (`index.html` + `style.css`)
+
+- **Dos columnas 1:2.** `.experiencia` es una grilla `minmax(0,1fr) minmax(0,2fr)`:
+  el tercio izquierdo lleva el título, los gestos, los porcentajes y la cámara; el
+  lienzo ocupa los dos tercios derechos con casi todo el alto. No hay scroll en
+  escritorio (`body { overflow: hidden }`).
+- **Título**: `h1.marca__titulo` con **Sirivennela** (Google Fonts, cargada desde
+  el `<link>` del `<head>`). La tipografía se reserva para el título; todo lo
+  demás usa la pila sans del sistema (`--sans`). No hay subtítulo.
+- **Gestos**: cuatro tarjetas (`.gesto`) con un SVG de **las dos manos** y, cuando
+  ayuda, flechas (`gesto__flecha`). Los rótulos dicen solo qué hacer: «Muestra tus
+  puños», «Eleva los puños», «Abre las manos», «Mueve las manos». El SVG es
+  decorativo (`aria-hidden`), el texto visible es el rótulo.
+- **Indicadores**: dos filas (`.indicador`) con icono de mano (derecha / izquierda
+  espejada), cifra grande (`dato__cifra`), etiqueta chica y barra. `planta.js` las
+  pinta desde `pintarPorcentaje()`: escribe los números en `#crecimiento-derecha`,
+  `#floracion-derecha`, `#crecimiento-izquierda` y `#floracion-izquierda`, y deja
+  `--crecimiento` / `--floracion` en la fila; el ancho de las barras sale de esas
+  variables en CSS. La fila de la derecha son las plantas principales y la de la
+  izquierda, las copias del fondo.
+- **Cámara**: `#camara` va al fondo de la columna (`margin-top: auto`), con
+  `#camara-marco` en 16:9. `#camara-contenedor[data-estado]` lo maneja `sketch.js`
+  (`iniciando` / `lista` / `error`). Debajo van dos avisos públicos —«Colócate
+  frente a la cámara», «Mantén las manos dentro del cuadro»— que ocupan alto fijo
+  (`min-height`) para que el bloque no salte.
+- **Modo diagnóstico**: `?diagnostico=1` (o la tecla D) pone
+  `data-diagnostico="true"` en `<body>`. Solo entonces se ve `.diagnostico`:
+  `#pose-detalle`, `#manos-detalle`, `#gestos-estado` y la tabla `#pose-puntos`,
+  y el esqueleto de `debug-pose.js`. `pintarPose()` y `pintarManos()` escriben el
+  aviso público en `#pose-estado` / `#manos-estado` y el detalle interno en
+  `#pose-detalle` / `#manos-detalle`.
+- **Identificadores que el JS necesita**: `#camara-contenedor`, `#camara-marco`,
+  `#camara-mensaje`, `#pose-overlay`, `#pose-estado`, `#pose-puntos`,
+  `#manos-estado`, `#gestos-estado`, `#lienzo-contenedor` y `#planta-overlay`. Si
+  se renombran, hay que tocar `sketch.js`, `planta.js` y `debug-pose.js`.
+- **Paleta**: ciruela oscuro de base con degradado a lila apagado y jade, texto
+  crema y acentos rosa / lavanda / jade (`:root` en `style.css`). Los detalles
+  botánicos son dos SVG en datos URI sobre `.columna::before` y `::after`, a baja
+  opacidad y sin `pointer-events`.
+- **Pantallas angostas** (≤1040px): `.experiencia` pasa a columna y `.columna` a
+  `display: contents`, así los bloques se reordenan: título → lienzo → cámara →
+  gestos → indicadores. El lienzo queda con `46vh` de alto (mínimo 300px) y la
+  cámara centrada, para que ambos sigan visibles durante la interacción.
+- El lienzo y la cámara se dimensionan solos: `sketch.js` y `planta.js` leen
+  `clientWidth/clientHeight` de sus contenedores y `windowResized()` +
+  `ResizeObserver` los reajustan, así el cambio de layout no rompe nada.
+
 ## Modo depuración (`debug-pose.js`)
 
 - Es una capa **independiente**: no toca el escenario, ni `draw()`, ni la
@@ -297,8 +346,10 @@ composición. La escena se parte en tres capas:
   el esqueleto coincide con el cuerpo espejado y no queda corrido.
 - Un punto o una línea se dibuja solo si **ambos** extremos tienen
   `punto.visible` (confianza ≥ `CONFIANZA_MINIMA`) y caen dentro del recorte.
-- Para apagarlo en la presentación: `DEPURACION_POSE = false` dentro del archivo,
-  o borrar `<script src="debug-pose.js">` de `index.html`.
+- **Solo dibuja en modo diagnóstico** (`?diagnostico=1` en la URL o la tecla D):
+  `modoDiagnostico()` lee `document.body.dataset.diagnostico` en cada frame, así
+  que se prende y se apaga sin recargar. En la experiencia pública la capa queda
+  limpia. Para no cargarlo nunca, borrar `<script src="debug-pose.js">`.
 - Colores del indicador duplicados a propósito entre `style.css` y el canvas:
   el canvas no lee variables CSS.
 

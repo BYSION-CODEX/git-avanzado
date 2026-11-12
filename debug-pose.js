@@ -15,23 +15,17 @@
    ============================================================ */
 
 /**
- * Interruptor del modo de depuración.
- *   true  -> dibuja esqueleto e indicador
- *   false -> este archivo no hace absolutamente nada
- *
- * Para la presentación final alcanza con borrar el <script> de index.html.
+ * Modo diagnóstico. El esqueleto, los puntos de seguimiento y la tabla de
+ * coordenadas pertenecen al diagnóstico, no a la experiencia pública: se
+ * encienden con `?diagnostico=1` en la URL o con la tecla D, que marcan
+ * `data-diagnostico` en <body>. Se consulta en cada frame, así se puede
+ * prender y apagar sin recargar.
  */
-const DEPURACION_POSE = true;
-
-/**
- * Interruptor del esqueleto de manos.
- *   true  -> dibuja los 21 puntos y las conexiones de cada mano
- *   false -> no dibuja manos; el resto del modo sigue igual
- */
-const DEPURACION_MANOS = true;
+function modoDiagnostico() {
+  return Boolean(document.body && document.body.dataset.diagnostico === 'true');
+}
 
 (function () {
-  if (!DEPURACION_POSE && !DEPURACION_MANOS) return;
 
   /* ---------- Configuración ---------- */
 
@@ -101,11 +95,11 @@ const DEPURACION_MANOS = true;
       return;
     }
 
-    if (DEPURACION_POSE && typeof obtenerPoseBusto !== 'function') {
+    if (typeof obtenerPoseBusto !== 'function') {
       console.warn('[debugPose] sin API de cuerpo; se omite el esqueleto corporal.');
     }
 
-    if (DEPURACION_MANOS && typeof obtenerManos !== 'function') {
+    if (typeof obtenerManos !== 'function') {
       console.warn('[debugPose] sin API de manos; se omite el dibujo de manos.');
     }
 
@@ -139,7 +133,7 @@ const DEPURACION_MANOS = true;
 
   /** Esqueleto corporal + indicador de estado. */
   function dibujarCuerpo() {
-    if (!DEPURACION_POSE || typeof obtenerPoseBusto !== 'function') return;
+    if (!modoDiagnostico() || typeof obtenerPoseBusto !== 'function') return;
 
     const estado = obtenerEstadoPose();
 
@@ -154,7 +148,7 @@ const DEPURACION_MANOS = true;
 
   /** Puntos y conexiones de cada mano detectada. */
   function dibujarManos() {
-    if (!DEPURACION_MANOS || typeof obtenerManos !== 'function') return;
+    if (!modoDiagnostico() || typeof obtenerManos !== 'function') return;
 
     const manos = obtenerManos();
     if (!manos || manos.length === 0) return;

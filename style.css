@@ -1,7 +1,7 @@
 /* ============================================================
    El cambio florece contigo — estilos de la interfaz
-   Sin frameworks ni dependencias externas.
-   Estado actual: solo estructura y layout. Sin animaciones.
+   Sin frameworks ni dependencias externas. El lienzo es el
+   protagonista; el panel izquierdo solo acompaña.
    ============================================================ */
 
 /* ---------- Reset mínimo ---------- */
@@ -23,112 +23,336 @@ body {
 
 h1,
 h2,
-p {
+p,
+ol,
+ul,
+figure {
   margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
 }
 
 /* ---------- Variables ---------- */
 
 :root {
-  --color-fondo: #14161a;
-  --color-panel: #1b1e23;
-  --color-borde: rgba(255, 255, 255, 0.09);
-  --color-texto: #e7ecf2;
-  --color-tenue: #8d959f;
-  --radio: 12px;
-  --espacio: clamp(14px, 2vw, 26px);
+  /* Ciruela profunda de base, con lila apagado y jade como segundo clima. */
+  --ciruela: #1a0e1d;
+  --ciruela-media: #2a1730;
+  --lila: #3b2745;
+  --jade: #14302b;
+
+  /* Texto y acentos tomados de las flores. */
+  --crema: #f7eddd;
+  --crema-tenue: rgba(247, 237, 221, 0.66);
+  --crema-debil: rgba(247, 237, 221, 0.38);
+  --rosa: #edaacb;
+  --lavanda: #bca9e8;
+  --jade-claro: #8ad7b2;
+
+  --borde: rgba(247, 237, 221, 0.14);
+  --borde-suave: rgba(247, 237, 221, 0.08);
+
+  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --display: "Sirivennela", "Segoe UI", system-ui, serif;
+
+  --radio: 16px;
+  --espacio: clamp(14px, 1.6vw, 26px);
 }
 
 /* ---------- Base ---------- */
 
 body {
-  background: var(--color-fondo);
-  color: var(--color-texto);
-  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  background:
+    radial-gradient(1100px 780px at 6% -6%, #3a1c40 0%, rgba(58, 28, 64, 0) 62%),
+    radial-gradient(900px 760px at 102% 106%, #123430 0%, rgba(18, 52, 48, 0) 58%),
+    linear-gradient(158deg, var(--ciruela) 0%, var(--ciruela-media) 48%, var(--jade) 100%);
+  background-attachment: fixed;
+  color: var(--crema);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   /* El lienzo ocupa el alto disponible: sin scroll en escritorio. */
   overflow: hidden;
 }
 
-/* ---------- Contenedor principal ---------- */
+/* ---------- Contenedor principal: dos columnas 1:2 ---------- */
 
 .experiencia {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   gap: var(--espacio);
   height: 100%;
   padding: var(--espacio);
 }
 
-.experiencia__encabezado {
-  flex: 0 0 auto;
-}
+/* ---------- Columna izquierda ---------- */
 
-.experiencia__titulo {
-  font-size: clamp(20px, 2.6vw, 32px);
-  font-weight: 600;
-  line-height: 1.15;
-}
-
-.experiencia__bajada {
-  margin-top: 6px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-tenue);
-  max-width: 60ch;
-}
-
-/* ---------- Escenario: cámara + lienzo ---------- */
-
-.experiencia__escenario {
-  /* min-height: 0 permite que los hijos con flex se achiquen en vez de desbordar. */
-  flex: 1 1 auto;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--espacio);
-}
-
-.panel {
+.columna {
+  position: relative;
   display: flex;
   flex-direction: column;
+  gap: clamp(12px, 1.4vw, 20px);
+  min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  border: 1px solid var(--color-borde);
-  border-radius: var(--radio);
-  background: var(--color-panel);
+  padding-right: clamp(2px, 0.6vw, 10px);
+  /* Red de seguridad en ventanas muy bajas: nunca se pierde la cámara. */
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-.panel__titulo {
+/* Detalles botánicos discretos en los márgenes del panel. */
+.columna::before,
+.columna::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.14;
+  filter: saturate(0.9);
+}
+
+.columna::before {
+  left: -34px;
+  bottom: -26px;
+  width: 190px;
+  height: 190px;
+  transform: rotate(8deg);
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><g fill='none' stroke='%238ad7b2' stroke-width='1.6' stroke-linecap='round'><path d='M62 118C58 88 58 56 62 20'/><path d='M62 74c-14-4-24-14-28-30 15 2 25 12 28 30z'/><path d='M62 56c14-4 24-14 28-30-15 2-25 12-28 30z'/><path d='M62 40c-10-3-17-10-20-22 11 1 18 9 20 22z'/><path d='M62 92c11-3 19-11 22-23-12 1-19 9-22 23z'/></g></svg>");
+}
+
+.columna::after {
+  right: -22px;
+  top: 46%;
+  width: 150px;
+  height: 150px;
+  opacity: 0.1;
+  transform: rotate(-10deg);
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><g fill='none' stroke='%23bca9e8' stroke-width='1.6' stroke-linecap='round'><path d='M20 112C40 92 62 70 92 26'/><path d='M46 84c-12-2-21-9-26-21 12 0 21 7 26 21z'/><path d='M64 62c12-3 20-11 23-24-12 2-20 10-23 24z'/></g></svg>");
+}
+
+.columna > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Título ---------- */
+
+.marca__titulo {
+  font-family: var(--display);
+  font-size: clamp(30px, 3.1vw, 54px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  color: var(--crema);
+  text-shadow: 0 1px 24px rgba(237, 170, 203, 0.18);
+}
+
+/* ---------- Gestos ---------- */
+
+.gestos__titulo {
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--crema-debil);
+}
+
+.gestos__lista {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px clamp(8px, 1vw, 14px);
+}
+
+.gesto {
+  min-width: 0;
+}
+
+.gesto__figura {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--borde-suave);
+  border-radius: 12px;
+  background: linear-gradient(150deg, rgba(247, 237, 221, 0.05), rgba(247, 237, 221, 0.015));
+}
+
+.gesto__icono {
   flex: 0 0 auto;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--color-borde);
-  font-size: 11px;
+  width: clamp(42px, 4.4vw, 56px);
+  height: auto;
+  color: var(--lavanda);
+}
+
+.gesto:nth-child(2) .gesto__icono,
+.gesto:nth-child(4) .gesto__icono {
+  color: var(--rosa);
+}
+
+.gesto:nth-child(3) .gesto__icono {
+  color: var(--jade-claro);
+}
+
+.gesto__flecha {
+  color: var(--crema-tenue);
+}
+
+.gesto__rotulo {
+  font-size: clamp(11px, 1vw, 12.5px);
+  line-height: 1.25;
+  color: var(--crema);
+}
+
+/* ---------- Indicadores ---------- */
+
+.indicadores {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.indicador {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--borde-suave);
+  border-radius: 12px;
+  background: rgba(247, 237, 221, 0.035);
+}
+
+.indicador__mano {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--jade-claro);
+  background: rgba(138, 215, 178, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(138, 215, 178, 0.22);
+}
+
+.indicador[data-grupo="izquierda"] .indicador__mano {
+  color: var(--rosa);
+  background: rgba(237, 170, 203, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(237, 170, 203, 0.22);
+}
+
+.indicador__mano svg {
+  width: 18px;
+  height: 18px;
+}
+
+.indicador__mano--espejo svg {
+  transform: scaleX(-1);
+}
+
+.indicador__cuerpo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dato {
+  display: grid;
+  grid-template-areas:
+    "cifra"
+    "etiqueta"
+    "barra";
+  row-gap: 2px;
+  min-width: 0;
+}
+
+.dato__cifra {
+  grid-area: cifra;
+  font-size: clamp(17px, 1.7vw, 22px);
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--crema);
+}
+
+.dato__etiqueta {
+  grid-area: etiqueta;
+  font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-tenue);
+  color: var(--crema-debil);
 }
 
-.panel__contenido {
+.dato__barra {
+  grid-area: barra;
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-/* Espacio de la cámara: marco 16:9 centrado + guía de encuadre debajo. */
-.panel__contenido--camara {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background: #101216;
+  display: block;
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 99px;
+  background: rgba(247, 237, 221, 0.12);
   overflow: hidden;
 }
 
+.dato__barra i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 99px;
+  transition: width 180ms linear;
+}
+
+.indicador[data-grupo="derecha"] .dato:nth-child(1) .dato__barra i {
+  background: var(--jade-claro);
+  width: calc(var(--crecimiento, 0) * 100%);
+}
+
+.indicador[data-grupo="derecha"] .dato:nth-child(2) .dato__barra i {
+  background: var(--rosa);
+  width: calc(var(--floracion, 0) * 100%);
+}
+
+.indicador[data-grupo="izquierda"] .dato:nth-child(1) .dato__barra i {
+  background: var(--jade-claro);
+  width: calc(var(--crecimiento, 0) * 100%);
+}
+
+.indicador[data-grupo="izquierda"] .dato:nth-child(2) .dato__barra i {
+  background: var(--rosa);
+  width: calc(var(--floracion, 0) * 100%);
+}
+
+/* ---------- Cámara ---------- */
+
+.camara {
+  /* Abajo de todo el panel izquierdo, como pide la puesta en escena. */
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  /* La altura del video manda: en ventanas bajas la cámara se achica sola
+     (46vh de ancho = 26vh de alto en 16:9). */
+  max-width: min(330px, 46vh);
+}
+
+.camara__contenedor {
+  position: relative;
+  width: 100%;
+}
+
 /* Ventana 16:9. Mantiene el frame completo de la cámara sin recortar los
-   costados; si la cámara entrega 4:3, el recorte de object-fit es vertical. */
+   costados, que es donde quedan las manos al abrir los brazos. */
 .camara__marco {
   position: relative;
   width: 100%;
@@ -136,119 +360,34 @@ body {
   display: grid;
   place-items: center;
   overflow: hidden;
-  border-radius: 8px;
-  background: #000;
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  background: #0b070d;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
 }
 
-/* Encuadre de busto: centrado horizontal y apenas arriba del centro vertical,
-   así entra la cabeza completa y se descarta la parte baja del cuadro. */
-.camara__guia {
-  max-width: 46ch;
+.camara__aviso {
+  min-height: 1.45em;
   font-size: 11.5px;
-  line-height: 1.5;
+  line-height: 1.45;
   text-align: center;
-  color: var(--color-tenue);
+  color: var(--crema-tenue);
 }
 
-/* Sin cámara la guía no aplica: no hay encuadre que corregir. */
-.panel__contenido--camara[data-estado="error"] .camara__guia {
-  display: none;
+.camara__aviso[data-estado="listo"] {
+  color: var(--jade-claro);
 }
 
-/* ---------- Lectura del reconocimiento corporal ---------- */
-
-.camara__pose {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-align: center;
-  color: var(--color-tenue);
+.camara__aviso[data-estado="parcial"] {
+  color: var(--rosa);
 }
 
-.camara__pose[data-estado="listo"] {
-  color: #7fd1a5;
+.camara__aviso[data-estado="error"] {
+  color: #f08f9b;
 }
 
-.camara__pose[data-estado="parcial"] {
-  color: #e0b25f;
-}
-
-.camara__pose[data-estado="error"] {
-  color: #e2707a;
-}
-
-/* Tabla de puntos: x, y y confianza. Monoespaciada para que las columnas
-   queden alineadas sin tablas ni cálculos de ancho. */
-.camara__puntos {
-  width: 100%;
-  max-height: 30vh;
-  margin: 0;
-  overflow: auto;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--color-tenue);
-  white-space: pre;
-}
-
-/* ---------- Gestos reconocidos ---------- */
-
-.camara__gestos {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-  color: var(--color-tenue);
-}
-
-.camara__gestos li[data-estado="abierta"] {
-  color: #7fd1a5;
-}
-
-.camara__gestos li[data-estado="cerrado"] {
-  color: #e0b25f;
-}
-
-.camara__gestos li[data-estado="indefinido"] {
-  color: var(--color-tenue);
-}
-
-/* ---------- Capa de la planta ---------- */
-
-/* Se superpone al canvas de p5: el paisaje queda estático y esta capa anima.
-   Mismo rectángulo que el lienzo, así las coordenadas coinciden. */
-.planta__lienzo {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.panel__nota {
-  position: relative;
-  /* Por encima del video y del overlay de depuración. */
-  z-index: 3;
-  max-width: 42ch;
-  font-size: 12.5px;
-  line-height: 1.5;
-  text-align: center;
-  color: var(--color-tenue);
-}
-
-/* El mensaje de error se pinta en rojo; el de "permiso vencido" se distingue. */
-.panel__contenido--camara[data-estado="error"] .panel__nota {
-  color: #e2707a;
-}
-
-/* ---------- Video de la cámara ---------- */
-
-/* El <video> lo inyecta p5.js (createCapture) dentro del marco. */
-.panel__contenido--camara video {
+/* El video de la cámara: lo inyecta p5.js dentro del marco. */
+.camara__marco video {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -262,18 +401,16 @@ body {
 }
 
 /* Mientras se pide permiso el stream todavía puede estar vacío: no mostrarlo. */
-.panel__contenido--camara[data-estado="iniciando"] video {
+#camara-contenedor[data-estado="iniciando"] video {
   opacity: 0;
 }
 
 /* Si falló el acceso, no hay stream que mostrar. */
-.panel__contenido--camara[data-estado="error"] video {
+#camara-contenedor[data-estado="error"] video {
   display: none;
 }
 
-/* ---------- Overlay de depuración (esqueleto) ---------- */
-
-/* Mismo rectángulo que el video: por eso mapearPuntoCamara() coincide al pixel. */
+/* Overlay del esqueleto: mismo rectángulo que el video. */
 .camara__overlay {
   position: absolute;
   inset: 0;
@@ -283,32 +420,236 @@ body {
   pointer-events: none;
 }
 
-/* El canvas lo inyecta p5.js dentro de este contenedor. */
-.panel__contenido--lienzo {
+/* Mensajes de la cámara (permiso, error) encima del video. */
+.camara__mensaje {
+  position: relative;
+  z-index: 3;
+  max-width: 34ch;
+  padding: 0 14px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--crema-tenue);
+}
+
+#camara-contenedor[data-estado="error"] .camara__mensaje {
+  color: #f08f9b;
+}
+
+#camara-contenedor[data-estado="lista"] .camara__mensaje {
+  display: none;
+}
+
+#camara-contenedor[data-estado="error"] .camara__marco {
+  border-color: rgba(240, 143, 155, 0.5);
+}
+
+/* ---------- Modo diagnóstico ---------- */
+
+.diagnostico {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-height: 34vh;
+  overflow: auto;
+}
+
+body[data-diagnostico="true"] .diagnostico {
+  display: flex;
+}
+
+body[data-diagnostico="true"] .camara {
+  max-width: 100%;
+}
+
+.camara__detalle {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--crema-tenue);
+}
+
+.camara__gestos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--crema-tenue);
+}
+
+.camara__gestos li[data-estado="abierta"] {
+  color: var(--jade-claro);
+}
+
+.camara__gestos li[data-estado="cerrado"] {
+  color: var(--rosa);
+}
+
+/* Tabla de puntos: x, y y confianza. Monoespaciada para alinear columnas. */
+.camara__puntos {
+  margin: 0;
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--crema-tenue);
+  white-space: pre;
+}
+
+/* ---------- Lienzo ---------- */
+
+.lienzo {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  overflow: hidden;
+  background: #0f0a12;
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(247, 237, 221, 0.03);
+}
+
+.lienzo__contenedor {
+  position: relative;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
-.panel__contenido--lienzo canvas {
+.lienzo__contenedor canvas {
   display: block;
 }
 
-/* ---------- Adaptación a pantallas angostas ---------- */
+/* Capa de las plantas: encima del paisaje de p5, mismo rectángulo. */
+.planta__lienzo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
 
-@media (max-width: 860px) {
+/* ---------- Ajustes por alto (pantallas bajas de escritorio) ---------- */
+
+@media (max-height: 780px) {
+  :root {
+    --espacio: 14px;
+  }
+
+  .marca__titulo {
+    font-size: clamp(26px, 2.5vw, 40px);
+  }
+
+  .gesto__figura {
+    padding: 6px 8px;
+  }
+
+  .gesto__icono {
+    width: clamp(34px, 3.6vw, 44px);
+  }
+
+  .camara {
+    max-width: min(270px, 40vh);
+  }
+}
+
+/* ---------- Pantallas angostas ---------- */
+
+@media (max-width: 1040px) {
   body {
     overflow: auto;
   }
 
   .experiencia {
+    display: flex;
+    flex-direction: column;
     height: auto;
     min-height: 100%;
+    gap: 14px;
   }
 
-  .experiencia__escenario {
-    grid-template-columns: 1fr;
+  /* La columna deja de ser caja: sus hijos pasan a ordenarse en la página. */
+  .columna {
+    display: contents;
   }
 
-  .panel {
-    min-height: 240px;
+  .columna::before,
+  .columna::after {
+    display: none;
   }
+
+  .marca {
+    order: 1;
+  }
+
+  /* El lienzo y la cámara quedan arriba, siempre visibles al interactuar. */
+  .lienzo {
+    order: 2;
+    height: 46vh;
+    min-height: 300px;
+  }
+
+  .camara {
+    order: 3;
+    margin: 0 auto;
+    max-width: 420px;
+  }
+
+  .gestos {
+    order: 4;
+  }
+
+  .indicadores {
+    order: 5;
+  }
+
+  .gestos__lista {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .marca__titulo {
+    font-size: clamp(28px, 7vw, 44px);
+  }
+}
+
+@media (max-width: 560px) {
+  .experiencia {
+    padding: 14px;
+  }
+
+  .gestos__lista {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gesto__figura {
+    gap: 12px;
+  }
+
+  .indicador {
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .lienzo {
+    height: 40vh;
+  }
+}
+
+/* ---------- Accesibilidad ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .dato__barra i {
+    transition: none;
+  }
+}
+
+/* Foco visible para quien navega con teclado. */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--rosa);
+  outline-offset: 3px;
 }

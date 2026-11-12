@@ -2650,28 +2650,37 @@ function pintarPose(forzar = false) {
   const puntosEl = document.getElementById('pose-puntos');
   if (!estadoEl || !puntosEl) return;
 
+  const detalleEl = document.getElementById('pose-detalle');
+
   let estadoVisual = 'inactivo';
-  let texto = mensajePose;
+  let texto = mensajePose; // detalle interno, solo para diagnóstico
+  let aviso = '';
 
   if (estadoPose === 'cargando') {
     estadoVisual = 'parcial';
+    aviso = 'Preparando la experiencia…';
   } else if (estadoPose === 'error') {
     estadoVisual = 'error';
+    aviso = mensajePose;
   } else if (estadoPose === 'listo') {
     if (!poseBusto) {
       estadoVisual = 'parcial';
       texto = 'Cuerpo: sin detección — entrá en cuadro';
+      aviso = 'Colócate frente a la cámara';
     } else if (!poseBusto.bustoEnCuadro) {
       estadoVisual = 'parcial';
       texto = 'Cuerpo: busto incompleto — centrate y acercate';
+      aviso = 'Centrate y acercate un poco';
     } else {
       estadoVisual = 'listo';
       texto = 'Cuerpo: busto detectado';
+      aviso = '';
     }
   }
 
   estadoEl.dataset.estado = estadoVisual;
-  if (estadoEl.textContent !== texto) estadoEl.textContent = texto;
+  if (estadoEl.textContent !== aviso) estadoEl.textContent = aviso;
+  if (detalleEl && detalleEl.textContent !== texto) detalleEl.textContent = texto;
 
   if (estadoPose === 'listo' && poseBusto) {
     puntosEl.hidden = false;
@@ -3103,26 +3112,34 @@ function pintarManos(forzar = false) {
   const elemento = document.getElementById('manos-estado');
   if (!elemento) return;
 
+  const detalleEl = document.getElementById('manos-detalle');
+
   let estadoVisual = 'inactivo';
-  let texto = mensajeManos;
+  let detalle = mensajeManos;
+  let aviso = '';
 
   if (estadoManos === 'cargando') {
     estadoVisual = 'parcial';
   } else if (estadoManos === 'error') {
     estadoVisual = 'error';
+    aviso = mensajeManos;
   } else if (estadoManos === 'listo') {
     const cantidad = manosActuales.length;
+    detalle = `Manos: ${cantidad} ${cantidad === 1 ? 'detectada' : 'detectadas'}`;
+
     if (cantidad === 0) {
       estadoVisual = 'parcial';
-      texto = 'Manos: ninguna detectada';
+      aviso = 'Mantén las manos dentro del cuadro';
     } else {
       estadoVisual = 'listo';
-      texto = `Manos: ${cantidad} ${cantidad === 1 ? 'detectada' : 'detectadas'}`;
+      // Con manos en cuadro no hace falta ningún aviso: la escena responde.
+      aviso = '';
     }
   }
 
   elemento.dataset.estado = estadoVisual;
-  if (elemento.textContent !== texto) elemento.textContent = texto;
+  if (elemento.textContent !== aviso) elemento.textContent = aviso;
+  if (detalleEl && detalleEl.textContent !== detalle) detalleEl.textContent = detalle;
 
   pintarGestos();
 }

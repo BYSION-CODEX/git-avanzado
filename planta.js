@@ -610,6 +610,15 @@
   const grupoMano = crearGrupo(MANO_COPIAS);
   const grupos = [grupoTodas, grupoMano];
 
+  /**
+   * Las dos filas de cifras del panel: el grupo de la mano derecha son las
+   * plantas principales y el de la izquierda, las copias del fondo.
+   */
+  const FILAS_INDICADORES = [
+    { grupo: grupoTodas, sufijo: 'derecha' },
+    { grupo: grupoMano, sufijo: 'izquierda' },
+  ];
+
   let ultimoFrame = 0;
   let ultimoTexto = 0;
   let relojDebug = 0;
@@ -2834,20 +2843,51 @@
 
   /* ---------- Lectura en pantalla ---------- */
 
+  /** El mayor crecimiento y la mayor floración entre las plantas del grupo. */
+  function valoresDelGrupo(grupo) {
+    let crecimiento = 0;
+    let floracion = 0;
+
+    for (const planta of plantas) {
+      if (planta.grupo !== grupo) continue;
+      if (planta.crecimiento > crecimiento) crecimiento = planta.crecimiento;
+      if (planta.florecimiento > floracion) floracion = planta.florecimiento;
+    }
+
+    return { crecimiento, floracion };
+  }
+
+  /**
+   * Cifras grandes del panel izquierdo: una fila por grupo, con su número y su
+   * barra. Las barras leen `--crecimiento` / `--floracion` de la fila, así la
+   * hoja de estilos no necesita saber de plantas.
+   */
   function pintarPorcentaje(ahora) {
     if (ahora - ultimoTexto < REFRESCO_TEXTO_MS) return;
     ultimoTexto = ahora;
 
-    const elemento = document.getElementById('crecimiento-estado');
+    for (const fila of FILAS_INDICADORES) {
+      const contenedor = document.getElementById(`indicadores-${fila.sufijo}`);
+      if (!contenedor) continue;
+
+      const valores = valoresDelGrupo(fila.grupo);
+      const crecimiento = limitar(valores.crecimiento, 0, 1);
+      const floracion = limitar(valores.floracion, 0, 1);
+
+      contenedor.style.setProperty('--crecimiento', crecimiento.toFixed(3));
+      contenedor.style.setProperty('--floracion', floracion.toFixed(3));
+
+      pintarCifra(`crecimiento-${fila.sufijo}`, Math.round(crecimiento * 100));
+      pintarCifra(`floracion-${fila.sufijo}`, Math.round(floracion * 100));
+    }
+  }
+
+  function pintarCifra(id, valor) {
+    const elemento = document.getElementById(id);
     if (!elemento) return;
 
-    const porcentaje = Math.round(principal.crecimiento * 100);
-    const floracion = Math.round(principal.florecimiento * 100);
-    const texto = `Crecimiento: ${porcentaje}% · Floración: ${floracion}%`;
+    const texto = `${valor}%`;
     if (elemento.textContent !== texto) elemento.textContent = texto;
-
-    const estado = porcentaje > 0 || floracion > 0 ? 'listo' : 'inactivo';
-    if (elemento.dataset.estado !== estado) elemento.dataset.estado = estado;
   }
 
   /* ---------- Utilidades ---------- */
