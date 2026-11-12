@@ -9,7 +9,9 @@ Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
 gestos (mano abierta / puño) + **tres plantas interactivas**: la orquídea
 (centrada, montada con 20 piezas), la **planta de tres flores** (a la izquierda,
 montada con 14 piezas) y la **planta derecha** (a la derecha, montada con 20
-piezas y su propia secuencia de arcos y flores colgantes) + **paisaje de fondo en
+piezas y su propia secuencia de arcos y flores colgantes) + **seis copias de
+fondo** de esas tres plantas, más chicas, más lejanas y al 80 % de opacidad, que
+se mueven con la mano izquierda + **paisaje de fondo en
 dos PNG** que pasa de gris con neblina a atardecer a color siguiendo el
 crecimiento + nubes y destellos en una capa intermedia + árboles que reverdecen
 con ese crecimiento mientras haya manos en cuadro. El personaje que caminaba en
@@ -423,18 +425,37 @@ composición. La escena se parte en tres capas:
   vida del bosque y la transición del paisaje.
 - **Un catálogo, no un caso especial.** `PLANTAS` en `planta.js` es una lista de
   plantas; cada entrada define `id`, `archivo`, `x`, `altura`, `talloX`,
-  `faseViento`, `toleranciaFondo` y `corola`. La
+  `faseViento`, `toleranciaFondo` y `corola`, y opcionalmente `mano`, `opacidad`,
+  `levantar` y `limiteParticulas`. La
   interacción —crecimiento, floración, sacudida, inclinación y viento— es **una
   sola** y la comparten todas. Para sumar otra planta alcanza con agregar un
   objeto a la lista; no hay que tocar ninguna interacción.
 - **Base uniforme**: `BASE_PLANTAS.margenInferior` (0.06) deja a todas las
   plantas con el mismo margen desde el borde inferior del lienzo, sin tocarlo.
   Ya no siguen la curva del suelo: la base pareja las separa del bosque. La
-  lista se dibuja de atrás hacia adelante (la primera queda debajo); la planta de
-  tres flores va primera, la planta derecha segunda y la orquídea última, así la
-  protagonista queda encima.
+  lista se dibuja de atrás hacia adelante (la primera queda debajo): primero las
+  seis copias del fondo, después la planta de tres flores, la planta derecha y
+  al final la orquídea, así la protagonista queda encima. `def.levantar` sube la
+  base de una entrada (fracción del alto) para que las copias se lean más lejos.
+- **Copias del fondo**: seis entradas con `mano: MANO_COPIAS` (dos de cada
+  planta), más chicas (`altura` 0.24–0.34), corridas hacia arriba (`levantar`
+  0.03–0.10) y al 80 % de opacidad (`opacidad`), dibujadas debajo de las
+  principales. Responden **solo a la mano izquierda**, así el campo se ve lleno
+  sin que las protagonistas pierdan el mando. Llevan `limiteParticulas: 60` para
+  que seis montajes no cuesten caro al agitar los dedos.
+- **Dos grupos de interacción**: `grupoTodas` (cualquier mano) y `grupoMano`
+  (`MANO_COPIAS`). Cada grupo tiene su objetivo, su índice de nivel, su
+  congelamiento de altura, su inclinación con resorte y sus intensidades de
+  sacudida y dedos; cada planta copia `planta.grupo.inclinacion` en cada frame y
+  dibuja con `anguloDeLaPlanta()`, que suma la inclinación de SU grupo. La
+  detección de sacudida y de dedos ya era por mano (`estadosSacudida` /
+  `estadosDedos` por `handedness`): ahora el grupo toma solo las suyas.
+- **La mano de las copias**: `MANO_COPIAS` vale `'Right'` porque a ml5 le llega
+  la imagen sin espejar (el espejo del video es CSS) y MediaPipe etiqueta las
+  manos suponiendo una imagen espejada. Si alguna vez responde la mano
+  equivocada, se cambia ese literal y listo.
 - **Cada planta tiene su propio estado**: imagen, proporción, `crecimiento`,
-  `florecimiento` y partículas. El objetivo lo calculan las manos una vez y cada
+  `florecimiento` y partículas. El objetivo lo calcula su grupo una vez y cada
   planta lo alcanza con su suavizado, así no comparten la variable de dibujo.
 - **Sumar otra planta**: (1) copiar el PNG recortado con el nombre
   `planta-<color>.png`; (2) agregar un objeto a `PLANTAS` con `id`, `archivo`,
@@ -490,7 +511,9 @@ composición. La escena se parte en tres capas:
   borde inferior del lienzo, pareja para todas y sin tocarlo.
 - `window.plantaDebug.nivelDesdeAltura(y)` expone el mapeo para comprobarlo
   desde la consola; `plantaDebug.plantas()` y `crecimientoDe(id)` muestran el
-  estado de cada una, incluida su `base` en píxeles.
+  estado de cada una (las nueve entradas, copias incluidas), incluida su `base`
+  en píxeles. `plantaDebug.objetivoCopias()` devuelve el nivel que pide la mano
+  de las copias.
 - Verificado en Node: y=0.85 → 10%, 0.72 → 30%, 0.50 → 50%, 0.40 → 75%,
   0.20 → 100%, y el mapeo es monótono en toda la banda.
 

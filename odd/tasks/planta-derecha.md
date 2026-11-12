@@ -101,3 +101,27 @@ primera rama bajó de 0.86 a 0.845 para no cruzarse con el gancho de la punta.
 - Verificado con el banco de destellos (`banco_destellos.js`, con la planta a
   pleno y los dedos agitados): 234 destellos vivos en la planta derecha y el
   fotograma repintado muestra la lluvia saliendo de las flores.
+
+### L4 — tercer pedido
+
+> «ahora quiero que dupliques las tres flores, pero estas copias se van a
+> ubicar detras de las principales mas en el fondo y con una escala menor, para
+> mostrar lejania, y van a funcionar totalmente igual, solo que estas se
+> activaran con la mano izquierda y respetaran los movimientos de dicha mano ok.
+> duplica algunas veces, para que se vea abundante y lleno el campo ok, pero una
+> cantidad considerable para que rrinda bien el funcionamiento si puedes bajarles
+> la opacidad a 80 tambien para que no interfieran con las principales»
+
+- Seis copias (dos de cada planta) al principio de `PLANTAS`: más chicas
+  (0.24–0.34 de alto), con la base levantada 0.03–0.10 y `opacidad: 0.8`.
+- La interacción pasó a tener **dos grupos** (`grupoTodas` y `grupoMano`): cada
+  uno con su objetivo, nivel, congelamiento, inclinación y sacudida/dedos. Las
+  copias usan `grupoMano` (`MANO_COPIAS`), las principales siguen con cualquier
+  mano. Las tres funciones de montaje ahora actualizan **por planta**.
+- Las copias llevan `limiteParticulas: 60` para que seis montajes no cuesten
+  caro al agitar los dedos.
+- Verificado con `banco_copias.js`: con una sola mano etiquetada 'Left' crecen
+  las principales (1) y las copias quedan en 0; con la etiquetada 'Right'
+  (MANO_COPIAS) crecen las seis copias y también las principales; con las dos,
+  todo en 1. El fotograma repintado muestra las nueve plantas, las copias al
+  80 % y por detrás.

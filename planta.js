@@ -387,6 +387,14 @@
   };
 
 
+  /**
+   * La mano que mueve las copias del fondo. OJO: a ml5 le llega la imagen SIN
+   * espejar (el espejo del video es solo CSS) y MediaPipe etiqueta las manos
+   * suponiendo una imagen espejada, así que la izquierda real del usuario llega
+   * como 'Right'. Si alguna vez responde la mano equivocada, se cambia acá.
+   */
+  const MANO_COPIAS = 'Right';
+
   /* ---------- Catálogo de plantas ---------- */
 
   /**
@@ -401,8 +409,42 @@
    * El orden de la lista es el orden de dibujo (la primera queda debajo).
    * `x` va en fracción del ancho del lienzo; `altura`, en fracción del alto al
    * 100% de crecimiento. La proporción NO se declara: sale del PNG al cargar.
+   *
+   * Las copias del fondo (`mano: MANO_COPIAS`) van PRIMERO: se dibujan debajo
+   * de las principales, son más chicas, más transparentes (`opacidad`) y su
+   * base sube un poco (`levantar`) para leerse más lejos. Responden solo a la
+   * mano izquierda, así el campo se llena sin que las principales pierdan
+   * protagonismo. `limiteParticulas` les baja el tope para que tantas copias no
+   * cuesten caro cuando se agitan los dedos.
    */
+    /**
+   * Una copia del fondo: la misma planta, más chica, con la base corrida hacia
+   * arriba y al 80 % de opacidad, movida solo por la mano de las copias.
+   */
+  function copiaDeFondo(id, archivo, personalizado, x, altura, levantar, faseViento) {
+    return {
+      id,
+      archivo,
+      personalizado,
+      mano: MANO_COPIAS,
+      opacidad: 0.8,
+      limiteParticulas: 60,
+      x,
+      altura,
+      levantar,
+      talloX: 0.5,
+      faseViento,
+      toleranciaFondo: 0,
+    };
+  }
+
   const PLANTAS = [
+    copiaDeFondo('tres_flores_fondo_1', 'tres-flores-tallo.png', 'tres-flores', 0.1, 0.3, 0.04, 0.6),
+    copiaDeFondo('orquidea_fondo_1', 'orquidea-tallo.png', 'orquidea', 0.36, 0.34, 0.06, 2.2),
+    copiaDeFondo('planta_derecha_fondo_1', 'derecha-tallo.png', 'planta-derecha', 0.63, 0.3, 0.03, 4.4),
+    copiaDeFondo('tres_flores_fondo_2', 'tres-flores-tallo.png', 'tres-flores', 0.45, 0.24, 0.1, 5.3),
+    copiaDeFondo('orquidea_fondo_2', 'orquidea-tallo.png', 'orquidea', 0.72, 0.26, 0.08, 1.9),
+    copiaDeFondo('planta_derecha_fondo_2', 'derecha-tallo.png', 'planta-derecha', 0.93, 0.24, 0.06, 3.1),
     {
       id: 'tres_flores',
       /**
@@ -544,27 +586,56 @@
   let altoCSS = 0;
 
   /**
-   * Estado COMPARTIDO por todas las plantas: los objetivos salen de las manos,
-   * y cada planta los alcanza con su propio suavizado.
+   * Cada grupo de plantas se mueve con SUS manos: las principales responden a
+   * cualquiera y las copias del fondo solo a la mano izquierda. Todo el estado
+   * de una interacción (nivel, inclinación, sacudida, dedos y floración) vive
+   * acá, así los grupos no se pisan.
    */
-  let objetivo = 0; // nivel elegido 0..1
-  let indiceNivel = 0; // nivel actual, para la histéresis
-  let objetivoFloracion = 0;
+  function crearGrupo(mano) {
+    return {
+      mano, // null = cualquier mano; si no, el `handedness` que lo mueve
+      objetivo: 0, // nivel elegido 0..1
+      indiceNivel: 0, // nivel actual, para la histéresis
+      objetivoFloracion: 0,
+      congelarAltura: false, // true cuando la mano va rápido o está sacudiendo
+      inclinacion: 0, // radianes, ya suavizada
+      velocidadInclinacion: 0, // rad/s, para el resorte
+      objetivoInclinacion: 0,
+      intensidadSacudida: 0, // 0..1, ya suavizada
+      intensidadDedos: 0, // 0..1, agitación de las puntas respecto de la muñeca
+    };
+  }
+
+  const grupoTodas = crearGrupo(null);
+  const grupoMano = crearGrupo(MANO_COPIAS);
+  const grupos = [grupoTodas, grupoMano];
+
   let ultimoFrame = 0;
   let ultimoTexto = 0;
-
-  let intensidadSacudida = 0; // 0..1, ya suavizada
-  let intensidadDedos = 0; // 0..1, agitación de las puntas respecto de la muñeca
-  let congelarAltura = false; // true cuando la mano va rápido o está sacudiendo
-  let inclinacion = 0; // radianes, ya suavizada
-  let velocidadInclinacion = 0; // rad/s, para el resorte
-  let objetivoInclinacion = 0;
   let relojDebug = 0;
   const estadosSacudida = {}; // un estado por mano (clave: handedness)
   const estadosDedos = {}; // un estado por mano (clave: handedness)
 
   /** Una instancia por entrada del catálogo: imagen y animación propias. */
   const plantas = PLANTAS.map(crearPlanta);
+
+  /**
+   * El grupo que mueve una planta: las copias del fondo van con la mano
+   * izquierda y el resto con cualquier mano.
+   */
+  function grupoDe(def) {
+    return def.mano ? grupoMano : grupoTodas;
+  }
+
+  /**
+   * Las manos que miran un grupo: todas, o solo la que lo mueve.
+   */
+  function manosDelGrupo(grupo) {
+    if (typeof obtenerManos !== 'function') return [];
+    const manos = obtenerManos() || [];
+    if (!grupo.mano) return manos;
+    return manos.filter((mano) => mano.handedness === grupo.mano);
+  }
 
   /**
    * La planta que publica el porcentaje y la que lee sketch.js. Se marca con
@@ -578,6 +649,8 @@
   function crearPlanta(def) {
     return {
       def,
+      grupo: grupoDe(def),
+      inclinacion: 0, // la de su grupo, copiada en cada frame
       imagen: null,
       partes: null, // solo los montajes: piezas por clave
       partesListas: 0,
@@ -844,13 +917,11 @@
    * Nivel objetivo según la altura del puño, o null si no hay puño cerrado.
    * Sin puño el objetivo no cambia: la planta se queda donde está.
    */
-  function objetivoDesdeManos() {
-    if (typeof obtenerManos !== 'function') return null;
+  function objetivoDesdeManos(grupo) {
+    const manos = manosDelGrupo(grupo);
+    if (manos.length === 0) return null;
 
-    const manos = obtenerManos();
-    if (!manos || manos.length === 0) return null;
-
-    // Con dos puños manda el que está más alto.
+    // Con dos puños del mismo grupo manda el que está más alto.
     let mejorY = null;
     for (const mano of manos) {
       if (!mano.gesto || mano.gesto.estado !== 'cerrado') continue;
@@ -860,7 +931,7 @@
 
     if (mejorY === null) return null;
 
-    return nivelConHisteresis(progresoDesdeAltura(mejorY));
+    return nivelConHisteresis(progresoDesdeAltura(mejorY), grupo);
   }
 
   /** Altura de mano (0 arriba, 1 abajo) → progreso 0..1 dentro de la banda. */
@@ -887,21 +958,21 @@
    * la palma un poco, y sacudir lo mueve bastante. La histéresis absorbe esas
    * variaciones sin volver lento el gesto.
    */
-  function nivelConHisteresis(progreso) {
+  function nivelConHisteresis(progreso, grupo) {
     const paso = 1 / NIVELES.length;
 
     while (
-      indiceNivel < NIVELES.length - 1 &&
-      progreso >= (indiceNivel + 1) * paso + MARGEN_NIVEL
+      grupo.indiceNivel < NIVELES.length - 1 &&
+      progreso >= (grupo.indiceNivel + 1) * paso + MARGEN_NIVEL
     ) {
-      indiceNivel += 1;
+      grupo.indiceNivel += 1;
     }
 
-    while (indiceNivel > 0 && progreso <= indiceNivel * paso - MARGEN_NIVEL) {
-      indiceNivel -= 1;
+    while (grupo.indiceNivel > 0 && progreso <= grupo.indiceNivel * paso - MARGEN_NIVEL) {
+      grupo.indiceNivel -= 1;
     }
 
-    return NIVELES[indiceNivel];
+    return NIVELES[grupo.indiceNivel];
   }
 
   /** Centro de la palma: promedio de muñeca (0) y base del dedo medio (9). */
@@ -917,47 +988,48 @@
     // La altura solo sigue a la mano cuando el movimiento es tranquilo. Si la
     // muñeca va rápido o está en pleno vaivén —sacudida— el nivel no cambia:
     // eso no es "elegir una altura". Antes la planta saltaba decenas de veces
-    // por segundo al sacudir.
-    if (!congelarAltura) {
-      const nuevoObjetivo = objetivoDesdeManos();
-      if (nuevoObjetivo !== null) objetivo = nuevoObjetivo;
+    // por segundo al sacudir. Cada grupo tiene su propio congelamiento.
+    for (const grupo of grupos) {
+      if (grupo.congelarAltura) continue;
+      const nuevoObjetivo = objetivoDesdeManos(grupo);
+      if (nuevoObjetivo !== null) grupo.objetivo = nuevoObjetivo;
     }
 
     const factor = 1 - Math.exp(-VELOCIDAD_CRECIMIENTO * dt);
 
-    // El objetivo es uno solo; cada planta lo alcanza con su propio estado,
-    // así crecen juntas sin compartir la variable de dibujo.
+    // Cada grupo tiene su objetivo y cada planta lo alcanza con su propio
+    // estado, así crecen juntas sin compartir la variable de dibujo.
     for (const planta of plantas) {
+      const objetivo = planta.grupo.objetivo;
       planta.crecimiento += (objetivo - planta.crecimiento) * factor;
       if (Math.abs(objetivo - planta.crecimiento) < 0.001) planta.crecimiento = objetivo;
     }
   }
 
   /**
-   * El florecimiento depende SOLO de la mano abierta y es independiente del
-   * crecimiento: abrir o cerrar la mano no toca la altura de la planta.
+   * El florecimiento depende SOLO de la mano abierta del grupo y es
+   * independiente del crecimiento: abrir o cerrar la mano no toca la altura.
    */
   function actualizarFlorecimiento(dt) {
-    objetivoFloracion = hayManoAbierta() ? 1 : 0;
+    for (const grupo of grupos) {
+      grupo.objetivoFloracion = hayManoAbierta(grupo) ? 1 : 0;
+    }
 
     const factor = 1 - Math.exp(-VELOCIDAD_FLORACION * dt);
 
     for (const planta of plantas) {
-      planta.florecimiento += (objetivoFloracion - planta.florecimiento) * factor;
+      const objetivo = planta.grupo.objetivoFloracion;
+      planta.florecimiento += (objetivo - planta.florecimiento) * factor;
 
-      if (Math.abs(objetivoFloracion - planta.florecimiento) < 0.001) {
-        planta.florecimiento = objetivoFloracion;
+      if (Math.abs(objetivo - planta.florecimiento) < 0.001) {
+        planta.florecimiento = objetivo;
       }
     }
   }
 
-  /** ¿Hay al menos una mano abierta? El puño no cuenta. */
-  function hayManoAbierta() {
-    if (typeof obtenerManos !== 'function') return false;
-
-    const manos = obtenerManos();
-    if (!manos || manos.length === 0) return false;
-
+  /** ¿Hay al menos una mano abierta en el grupo? El puño no cuenta. */
+  function hayManoAbierta(grupo) {
+    const manos = manosDelGrupo(grupo);
     return manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
   }
 
@@ -978,11 +1050,14 @@
    * estirado sobre un tallo más corto. Cerrar la mano repliega solo las ramas.
    */
   function actualizarOrquidea(dt) {
-    const planta = plantas.find((candidata) => candidata.def.personalizado === 'orquidea');
-    if (!planta) return;
+    for (const planta of plantas) {
+      if (planta.def.personalizado === 'orquidea') actualizarOrquideaDe(planta, dt);
+    }
+  }
 
+  function actualizarOrquideaDe(planta, dt) {
     const estado = planta.orquidea;
-    const manos = typeof obtenerManos === 'function' ? obtenerManos() : [];
+    const manos = manosDelGrupo(planta.grupo);
     const hayMano = manos.length > 0;
     const manoAbierta = manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
     const hayPuno = manos.some((mano) => mano.gesto && mano.gesto.estado === 'cerrado');
@@ -1052,13 +1127,16 @@
    * llegar, `objetivo` no cambia (no hay puño) y la altura se conserva.
    */
   function actualizarTresFlores(dt, ahora) {
-    const planta = plantas.find(
-      (candidata) => candidata.def.personalizado === 'tres-flores'
-    );
-    if (!planta) return;
+    for (const planta of plantas) {
+      if (planta.def.personalizado === 'tres-flores') {
+        actualizarTresFloresDe(planta, dt, ahora);
+      }
+    }
+  }
 
+  function actualizarTresFloresDe(planta, dt, ahora) {
     const estado = planta.tresFlores;
-    const manos = typeof obtenerManos === 'function' ? obtenerManos() : [];
+    const manos = manosDelGrupo(planta.grupo);
     const hayMano = manos.length > 0;
     const manoAbierta = manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
     const hayPuno = manos.some((mano) => mano.gesto && mano.gesto.estado === 'cerrado');
@@ -1138,13 +1216,16 @@
    * colgada de un tallo más corto.
    */
   function actualizarPlantaDerecha(dt) {
-    const planta = plantas.find(
-      (candidata) => candidata.def.personalizado === 'planta-derecha'
-    );
-    if (!planta) return;
+    for (const planta of plantas) {
+      if (planta.def.personalizado === 'planta-derecha') {
+        actualizarPlantaDerechaDe(planta, dt);
+      }
+    }
+  }
 
+  function actualizarPlantaDerechaDe(planta, dt) {
     const estado = planta.derecha;
-    const manos = typeof obtenerManos === 'function' ? obtenerManos() : [];
+    const manos = manosDelGrupo(planta.grupo);
     const hayMano = manos.length > 0;
     const manoAbierta = manos.some((mano) => mano.gesto && mano.gesto.estado === 'abierta');
     const hayPuno = manos.some((mano) => mano.gesto && mano.gesto.estado === 'cerrado');
@@ -1197,48 +1278,52 @@
    * Sin manos el objetivo es 0: la planta se endereza sola y despacio.
    */
   function actualizarInclinacion(dt) {
-    const objetivo = objetivoInclinacionDesdeManos();
-    objetivoInclinacion = objetivo === null ? 0 : objetivo;
+    for (const grupo of grupos) {
+      const objetivo = objetivoInclinacionDesdeManos(grupo);
+      grupo.objetivoInclinacion = objetivo === null ? 0 : objetivo;
 
-    // Seguir la mano es más rígido que volver al centro: mismo contraste de
-    // antes, ahora con inercia de resorte y no con un lerp.
-    const siguiendo = objetivo !== null;
-    const rigidez = siguiendo
-      ? RESORTE_INCLINACION.rigidezSeguir
-      : RESORTE_INCLINACION.rigidezVolver;
-    const amortiguacion = siguiendo
-      ? RESORTE_INCLINACION.amortiguacionSeguir
-      : RESORTE_INCLINACION.amortiguacionVolver;
+      // Seguir la mano es más rígido que volver al centro: mismo contraste de
+      // antes, ahora con inercia de resorte y no con un lerp.
+      const siguiendo = objetivo !== null;
+      const rigidez = siguiendo
+        ? RESORTE_INCLINACION.rigidezSeguir
+        : RESORTE_INCLINACION.rigidezVolver;
+      const amortiguacion = siguiendo
+        ? RESORTE_INCLINACION.amortiguacionSeguir
+        : RESORTE_INCLINACION.amortiguacionVolver;
 
-    // Subpasos: con un dt grande (pestaña en segundo plano) el resorte
-    // explícito se vuelve inestable.
-    let restante = dt;
-    while (restante > 0) {
-      const paso = Math.min(restante, 1 / 120);
-      const aceleracion =
-        (objetivoInclinacion - inclinacion) * rigidez - velocidadInclinacion * amortiguacion;
+      // Subpasos: con un dt grande (pestaña en segundo plano) el resorte
+      // explícito se vuelve inestable.
+      let restante = dt;
+      while (restante > 0) {
+        const paso = Math.min(restante, 1 / 120);
+        const aceleracion =
+          (grupo.objetivoInclinacion - grupo.inclinacion) * rigidez -
+          grupo.velocidadInclinacion * amortiguacion;
 
-      velocidadInclinacion += aceleracion * paso;
-      inclinacion += velocidadInclinacion * paso;
-      restante -= paso;
+        grupo.velocidadInclinacion += aceleracion * paso;
+        grupo.inclinacion += grupo.velocidadInclinacion * paso;
+        restante -= paso;
+      }
+
+      grupo.inclinacion = limitar(grupo.inclinacion, -0.34, 0.34);
+
+      if (
+        Math.abs(grupo.objetivoInclinacion - grupo.inclinacion) < 0.0005 &&
+        Math.abs(grupo.velocidadInclinacion) < 0.0005
+      ) {
+        grupo.inclinacion = grupo.objetivoInclinacion;
+        grupo.velocidadInclinacion = 0;
+      }
     }
 
-    inclinacion = limitar(inclinacion, -0.34, 0.34);
-
-    if (
-      Math.abs(objetivoInclinacion - inclinacion) < 0.0005 &&
-      Math.abs(velocidadInclinacion) < 0.0005
-    ) {
-      inclinacion = objetivoInclinacion;
-      velocidadInclinacion = 0;
-    }
+    // Cada planta dibuja con la inclinación de su grupo.
+    for (const planta of plantas) planta.inclinacion = planta.grupo.inclinacion;
   }
 
-  function objetivoInclinacionDesdeManos() {
-    if (typeof obtenerManos !== 'function') return null;
-
-    const manos = obtenerManos();
-    if (!manos || manos.length === 0) return null;
+  function objetivoInclinacionDesdeManos(grupo) {
+    const manos = manosDelGrupo(grupo);
+    if (manos.length === 0) return null;
 
     let suma = 0;
     let cuenta = 0;
@@ -1314,9 +1399,6 @@
    * Así un movimiento amplio y accidental no dispara la interacción.
    */
   function actualizarSacudida(ahora, dt) {
-    let maxima = 0;
-    let maximaVelocidad = 0;
-    let vaiven = false;
     const vistas = new Set();
 
     if (typeof obtenerManos === 'function') {
@@ -1340,16 +1422,12 @@
         }
 
         const estado = estadosSacudida[clave];
-        const sacudiendo = detectarSacudida(estado, muneca, ahora);
-        const factor = 1 - Math.exp(-(sacudiendo ? ATAQUE_SACUDIDA : RELAJO_SACUDIDA) * dt);
+        estado.sacudiendo = detectarSacudida(estado, muneca, ahora);
+        const factor =
+          1 - Math.exp(-(estado.sacudiendo ? ATAQUE_SACUDIDA : RELAJO_SACUDIDA) * dt);
 
-        estado.intensidad += ((sacudiendo ? 1 : 0) - estado.intensidad) * factor;
-        maxima = Math.max(maxima, estado.intensidad);
-        maximaVelocidad = Math.max(maximaVelocidad, estado.velocidad);
-
-        // Dos reversiones en la ventana ya son vaivén, aunque la sacudida aún
-        // no esté confirmada (hacen falta tres).
-        if (estado.cambios.length >= 2) vaiven = true;
+        estado.intensidad +=
+          ((estado.sacudiendo ? 1 : 0) - estado.intensidad) * factor;
       }
     }
 
@@ -1358,21 +1436,35 @@
       if (vistas.has(clave)) continue;
 
       const estado = estadosSacudida[clave];
+      estado.sacudiendo = false;
+      estado.velocidad = 0;
       estado.intensidad += (0 - estado.intensidad) * (1 - Math.exp(-RELAJO_SACUDIDA * dt));
 
-      if (estado.intensidad < 0.01) {
-        delete estadosSacudida[clave];
-      } else {
-        maxima = Math.max(maxima, estado.intensidad);
-      }
+      if (estado.intensidad < 0.01) delete estadosSacudida[clave];
     }
 
-    intensidadSacudida = maxima;
+    // Cada grupo hereda la sacudida de SUS manos.
+    for (const grupo of grupos) {
+      let maxima = 0;
+      let maximaVelocidad = 0;
+      let vaiven = false;
 
-    // En los extremos del vaivén la velocidad instantánea pasa por cero, así
-    // que la velocidad sola no alcanza: también congela el vaivén sostenido.
-    congelarAltura =
-      maximaVelocidad >= VELOCIDAD_CONGELAMIENTO_NIVEL || maxima > 0.1 || vaiven;
+      for (const [clave, estado] of Object.entries(estadosSacudida)) {
+        if (grupo.mano && clave !== grupo.mano) continue;
+        maxima = Math.max(maxima, estado.intensidad);
+        maximaVelocidad = Math.max(maximaVelocidad, estado.velocidad || 0);
+        // Dos reversiones en la ventana ya son vaivén, aunque la sacudida aún
+        // no esté confirmada (hacen falta tres).
+        if (estado.cambios.length >= 2) vaiven = true;
+      }
+
+      grupo.intensidadSacudida = maxima;
+
+      // En los extremos del vaivén la velocidad instantánea pasa por cero, así
+      // que la velocidad sola no alcanza: también congela el vaivén sostenido.
+      grupo.congelarAltura =
+        maximaVelocidad >= VELOCIDAD_CONGELAMIENTO_NIVEL || maxima > 0.1 || vaiven;
+    }
   }
 
   /** ¿La muñeca cambió de dirección lo suficiente como para contar? */
@@ -1413,7 +1505,6 @@
    * la sacudida, para que los destellos no parpadeen.
    */
   function actualizarDedos(ahora, dt) {
-    let maxima = 0;
     const vistas = new Set();
 
     if (typeof obtenerManos === 'function') {
@@ -1458,7 +1549,6 @@
         const agitado = velocidad >= VELOCIDAD_MINIMA_DEDOS;
         const factor = 1 - Math.exp(-(agitado ? ATAQUE_DEDOS : RELAJO_DEDOS) * dt);
         estado.intensidad += ((agitado ? 1 : 0) - estado.intensidad) * factor;
-        maxima = Math.max(maxima, estado.intensidad);
       }
     }
 
@@ -1469,14 +1559,18 @@
       const estado = estadosDedos[clave];
       estado.intensidad += (0 - estado.intensidad) * (1 - Math.exp(-RELAJO_DEDOS * dt));
 
-      if (estado.intensidad < 0.01) {
-        delete estadosDedos[clave];
-      } else {
-        maxima = Math.max(maxima, estado.intensidad);
-      }
+      if (estado.intensidad < 0.01) delete estadosDedos[clave];
     }
 
-    intensidadDedos = maxima;
+    // Cada grupo hereda la agitación de SUS manos.
+    for (const grupo of grupos) {
+      let maxima = 0;
+      for (const [clave, estado] of Object.entries(estadosDedos)) {
+        if (grupo.mano && clave !== grupo.mano) continue;
+        maxima = Math.max(maxima, estado.intensidad);
+      }
+      grupo.intensidadDedos = maxima;
+    }
   }
 
   /* ---------- Partículas ---------- */
@@ -1496,10 +1590,14 @@
       return;
     }
 
-    if (intensidadSacudida > 0.12 && planta.crecimiento > 0.05) {
-      planta.acumuladorEmision += EMISION_MAXIMA * intensidadSacudida * dt;
+    const grupo = planta.grupo;
+    const limite = planta.def.limiteParticulas || MAX_PARTICULAS;
+    const limiteDestellos = Math.min(MAX_DESTELLOS, Math.round(limite * 0.75));
 
-      while (planta.acumuladorEmision >= 1 && planta.particulas.length < MAX_PARTICULAS) {
+    if (grupo.intensidadSacudida > 0.12 && planta.crecimiento > 0.05) {
+      planta.acumuladorEmision += EMISION_MAXIMA * grupo.intensidadSacudida * dt;
+
+      while (planta.acumuladorEmision >= 1 && planta.particulas.length < limite) {
         emitirParticula(planta);
         planta.acumuladorEmision -= 1;
       }
@@ -1508,8 +1606,8 @@
     }
 
     // Destellos: los dispara la agitación de los dedos, no la muñeca.
-    if (intensidadDedos > 0.12 && planta.crecimiento > 0.05) {
-      planta.acumuladorDestellos += EMISION_DESTELLOS * intensidadDedos * dt;
+    if (grupo.intensidadDedos > 0.12 && planta.crecimiento > 0.05) {
+      planta.acumuladorDestellos += EMISION_DESTELLOS * grupo.intensidadDedos * dt;
       let destellos = 0;
       for (const particula of planta.particulas) {
         if (particula.destello) destellos += 1;
@@ -1517,8 +1615,8 @@
 
       while (
         planta.acumuladorDestellos >= 1 &&
-        destellos < MAX_DESTELLOS &&
-        planta.particulas.length < MAX_PARTICULAS
+        destellos < limiteDestellos &&
+        planta.particulas.length < limite
       ) {
         emitirDestello(planta, ahora);
         planta.acumuladorDestellos -= 1;
@@ -1591,8 +1689,7 @@
     if (planta.def.personalizado === 'tres-flores') {
       const puntos = montajeTresFlores(planta, altoCSS, ahora);
       const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
-      const angulo =
-        inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+      const angulo = anguloDeLaPlanta(planta, ahora);
       const cos = Math.cos(angulo);
       const sin = Math.sin(angulo);
       const localX = puntos.puntaTallo.x;
@@ -1608,8 +1705,7 @@
     if (planta.def.personalizado === 'planta-derecha') {
       const puntos = montajePlantaDerecha(planta, altoCSS, ahora);
       const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
-      const angulo =
-        inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+      const angulo = anguloDeLaPlanta(planta, ahora);
       const cos = Math.cos(angulo);
       const sin = Math.sin(angulo);
       const localX = puntos.puntoFlorPunta.x;
@@ -1635,7 +1731,7 @@
     const localX = (ORQUIDEA.talloPunta - ORQUIDEA.talloBase) * anchoTallo;
     const localY = -largo - ORQUIDEA.florSobrePunta * full;
 
-    const angulo = inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    const angulo = anguloDeLaPlanta(planta, ahora);
     const cos = Math.cos(angulo);
     const sin = Math.sin(angulo);
 
@@ -1733,6 +1829,23 @@
   function dibujarPlanta(planta, ancho, alto, ahora, contexto = ctx) {
     if (!planta.lista) return;
 
+    const c = contexto || ctx;
+    const opacidad = planta.def.opacidad === undefined ? 1 : planta.def.opacidad;
+
+    // Las copias del fondo se dibujan más transparentes para no competir con
+    // las principales. Con opacidad 1 no se paga el save/restore.
+    if (opacidad >= 0.999) {
+      dibujarPlantaEn(planta, ancho, alto, ahora, c);
+      return;
+    }
+
+    c.save();
+    c.globalAlpha *= opacidad;
+    dibujarPlantaEn(planta, ancho, alto, ahora, c);
+    c.restore();
+  }
+
+  function dibujarPlantaEn(planta, ancho, alto, ahora, contexto) {
     // La orquídea no es una ilustración única: tiene su propio montaje.
     if (planta.def.personalizado === 'orquidea') {
       dibujarOrquidea(planta, ancho, alto, ahora, contexto);
@@ -1761,8 +1874,7 @@
     // El temblor pivota en la base, como un tallo real: no se traslada entero.
     c.save();
 
-    const anguloPlanta =
-      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    const anguloPlanta = anguloDeLaPlanta(planta, ahora);
 
     if (Math.abs(anguloPlanta) > 0.001) {
       c.translate(base.x, base.y);
@@ -1784,15 +1896,27 @@
   /**
    * Temblor de la sacudida. Dos armónicos en vez de un seno puro: el tallo se
    * ve vibrar, no oscilar como un metrónomo. La intensidad ya viene suavizada
-   * por `actualizarSacudida`.
+   * por `actualizarSacudida` y es la de la mano del grupo de la planta.
    */
-  function temblorDeSacudida(ahora) {
-    if (intensidadSacudida <= 0.001) return 0;
+  function temblorDeSacudida(ahora, intensidad) {
+    if (!(intensidad > 0.001)) return 0;
 
     const base = Math.sin(ahora * FRECUENCIA_TEMBLOR);
     const armonico = Math.sin(ahora * FRECUENCIA_TEMBLOR * 1.73 + 1.1) * 0.35;
 
-    return (base + armonico) * intensidadSacudida * AMPLITUD_TEMBLOR;
+    return (base + armonico) * intensidad * AMPLITUD_TEMBLOR;
+  }
+
+  /**
+   * Ángulo con el que se dibuja una planta: la inclinación de SU grupo (la
+   * mano que la mueve), el temblor de esa mano y el vaivén del viento.
+   */
+  function anguloDeLaPlanta(planta, ahora) {
+    return (
+      planta.inclinacion +
+      temblorDeSacudida(ahora, planta.grupo.intensidadSacudida) +
+      balanceoDelAire(ahora, planta)
+    );
   }
 
   /**
@@ -1957,8 +2081,7 @@
     c.save();
 
     // Todo lo que nace del tallo pivota en la base: el suelo queda quieto.
-    const anguloPlanta =
-      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    const anguloPlanta = anguloDeLaPlanta(planta, ahora);
     c.translate(base.x, base.y);
     c.rotate(anguloPlanta);
 
@@ -2251,8 +2374,7 @@
     c.save();
 
     // Todo lo que nace del tallo pivota en la base: el suelo queda quieto.
-    const anguloPlanta =
-      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    const anguloPlanta = anguloDeLaPlanta(planta, ahora);
     c.translate(base.x, base.y);
     c.rotate(anguloPlanta);
 
@@ -2565,8 +2687,7 @@
     c.save();
 
     // Todo lo que nace del tallo pivota en la base: el suelo queda quieto.
-    const anguloPlanta =
-      inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+    const anguloPlanta = anguloDeLaPlanta(planta, ahora);
     c.translate(base.x, base.y);
     c.rotate(anguloPlanta);
 
@@ -2705,7 +2826,9 @@
   function baseDeLaPlanta(def, ancho, alto) {
     return {
       x: ancho * def.x,
-      y: alto - alto * BASE_PLANTAS.margenInferior,
+      // `levantar` sube la base para que las copias del fondo se lean más
+      // lejos, apoyadas más arriba que las principales.
+      y: alto - alto * (BASE_PLANTAS.margenInferior + (def.levantar || 0)),
     };
   }
 
@@ -2738,20 +2861,23 @@
    * sacudida, partículas y secuencia de la orquídea. No recarga imágenes.
    */
   function reiniciar() {
-    objetivo = 0;
-    indiceNivel = 0;
-    objetivoFloracion = 0;
-    intensidadSacudida = 0;
-    congelarAltura = false;
-    inclinacion = 0;
-    velocidadInclinacion = 0;
-    objetivoInclinacion = 0;
+    for (const grupo of grupos) {
+      grupo.objetivo = 0;
+      grupo.indiceNivel = 0;
+      grupo.objetivoFloracion = 0;
+      grupo.intensidadSacudida = 0;
+      grupo.intensidadDedos = 0;
+      grupo.congelarAltura = false;
+      grupo.inclinacion = 0;
+      grupo.velocidadInclinacion = 0;
+      grupo.objetivoInclinacion = 0;
+    }
 
     for (const clave of Object.keys(estadosSacudida)) delete estadosSacudida[clave];
     for (const clave of Object.keys(estadosDedos)) delete estadosDedos[clave];
-    intensidadDedos = 0;
 
     for (const planta of plantas) {
+      planta.inclinacion = 0;
       planta.crecimiento = 0;
       planta.florecimiento = 0;
       planta.particulas = [];
@@ -2782,11 +2908,13 @@
   window.plantaDebug = {
     nivelDesdeAltura: (y) => nivelDesdeAltura(y),
     crecimiento: () => principal.crecimiento,
-    objetivo: () => objetivo,
+    objetivo: () => grupoTodas.objetivo,
+    /** El objetivo del grupo que mueve la mano izquierda (las copias). */
+    objetivoCopias: () => grupoMano.objetivo,
     florecimiento: () => principal.florecimiento,
-    sacudida: () => intensidadSacudida,
-    destellos: () => intensidadDedos,
-    inclinacion: () => inclinacion,
+    sacudida: () => grupoTodas.intensidadSacudida,
+    destellos: () => grupoTodas.intensidadDedos,
+    inclinacion: () => principal.inclinacion,
     particulas: () => principal.particulas.length,
     plantas: () =>
       plantas.map((planta) => ({
@@ -2882,8 +3010,7 @@
       const ahora = typeof ahoraMs === 'number' ? ahoraMs : ultimoFrame;
       const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
       const puntos = montajeTresFlores(planta, altoCSS, ahora);
-      const angulo =
-        inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+      const angulo = anguloDeLaPlanta(planta, ahora);
       const cos = Math.cos(angulo);
       const sin = Math.sin(angulo);
       const aPantalla = (punto) => ({
@@ -2929,8 +3056,7 @@
       const ahora = typeof ahoraMs === 'number' ? ahoraMs : ultimoFrame;
       const base = baseDeLaPlanta(planta.def, anchoCSS, altoCSS);
       const puntos = montajePlantaDerecha(planta, altoCSS, ahora);
-      const angulo =
-        inclinacion + temblorDeSacudida(ahora) + balanceoDelAire(ahora, planta);
+      const angulo = anguloDeLaPlanta(planta, ahora);
       const cos = Math.cos(angulo);
       const sin = Math.sin(angulo);
       const aPantalla = (punto) => ({
