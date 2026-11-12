@@ -789,20 +789,18 @@
   /* ---------- Orquídea: secuencia ---------- */
 
   /**
-   * La flor solo se muestra abierta cuando se juntan DOS condiciones:
+   * La secuencia de la orquídea es:
    *
-   *   1. el tallo está en la punta (crecimiento >= 0.985);
-   *   2. hay una mano abierta.
+   *   1. el tallo crece con el puño cerrado;
+   *   2. al llegar a la punta (crecimiento >= 0.985) se abre la FLOR PRINCIPAL,
+   *      con puño o sin él: el final del crecimiento, no de la floración;
+   *   3. con la mano abierta en la punta se despliegan las RAMAS, la flor azul,
+   *      el capullo lateral y la hoja pequeña. Solo las ramas dependen de la
+   *      mano abierta.
    *
-   * Si falta cualquiera de las dos, la orquídea vuelve a su estado normal de
-   * planta crecida: el capullo cerrado en la punta del tallo y sin ramas. La
-   * apertura NO es acumulativa: es reversible. Si el puño baja, la flor se
+   * La apertura NO es acumulativa: es reversible. Si el puño baja, la flor se
    * cierra y vuelve a ser capullo, porque si no el capullo/flor quedaría
-   * estirado sobre un tallo más corto.
-   *
-   * `ramas` sigue a `apertura` con la misma lógica: abrir la mano en la punta
-   * despliega ramas, flor azul, capullo lateral y hoja pequeña; cerrar la mano
-   * (o bajar) las repliega.
+   * estirado sobre un tallo más corto. Cerrar la mano repliega solo las ramas.
    */
   function actualizarOrquidea(dt) {
     const planta = plantas.find((candidata) => candidata.def.personalizado === 'orquidea');
@@ -828,9 +826,11 @@
       estado.visibilidad = objetivoVisibilidad;
     }
 
-    // Abrir es más lento que cerrar: la flor se despliega pétalo por pétalo,
-    // pero cuando la mano se va o el tallo baja, se recoge enseguida.
-    const objetivoApertura = enLaPunta && manoAbierta ? 1 : 0;
+    // La flor principal se abre al llegar a la punta, con puño o sin él: es el
+    // final del crecimiento, no de la floración. Solo las ramas esperan a que
+    // la mano se abra. Abrir es más lento que cerrar: la flor se despliega
+    // pétalo por pétalo, pero si el tallo baja se recoge enseguida.
+    const objetivoApertura = enLaPunta ? 1 : 0;
     const velocidadApertura =
       objetivoApertura > estado.apertura
         ? 1 / ORQUIDEA.aperturaSegundos

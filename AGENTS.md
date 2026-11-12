@@ -500,20 +500,19 @@ composición. La escena se parte en tres capas:
   ancla en la punta del tallo** (`ax 0.455`, `ay 1`), no en el centro de la
   flor: así queda pegado al borde del tallo. A crecimiento 0 se ven las hojas
   base, el tallo corto y el capullo.
-- **La flor es reversible**, no acumulativa. `apertura` (0..1) va a 1 **solo si
-  el tallo está en la punta (`crecimiento >= 0.985`) y hay una mano abierta**;
-  en cualquier otro caso va a 0. Por eso:
-  - con el puño en la punta la planta queda crecida pero **con el capullo
-    cerrado**;
-  - al abrir la mano en la punta se abre **pétalo por pétalo** y se despliega
+- **La flor principal se abre al llegar a la punta**, con puño o sin él:
+  `apertura` (0..1) va a 1 cuando `crecimiento >= 0.985` y vuelve a 0 si el tallo
+  baja. Es el final del crecimiento, no de la floración. Por eso:
+  - con el puño en la punta la flor se abre **pétalo por pétalo** y se despliega
     la hoja alta;
-  - si se cierra la mano, o si el puño baja, la flor se cierra y vuelve a ser
-    capullo (no se estira sobre un tallo más corto).
+  - abrir la mano no cambia la flor: solo habilita las ramas;
+  - si el puño baja, la flor se cierra y vuelve a ser capullo (no se estira
+    sobre un tallo más corto).
   El cierre es más rápido que la apertura (`cierreSegundos` 1 s contra
   `aperturaSegundos` 1.8 s).
-- **Ramas**: `ramas` (0..1) sigue la misma lógica reversible. Sube solo con
-  `apertura >= 0.33`, mano abierta y tallo en la punta; baja cuando la flor se
-  cierra. Al desplegarse aparecen las dos ramas, la flor azul, el capullo
+- **Ramas**: `ramas` (0..1) es lo único que depende de la mano abierta. Sube con
+  `apertura >= 0.33`, mano abierta y tallo en la punta; baja cuando la mano se
+  cierra o el tallo baja. Al desplegarse aparecen las dos ramas, la flor azul, el capullo
   lateral y la hoja pequeña (a la **izquierda** de la base y chica, 0.16 de
   `full`).
 - **Sin mano no hay planta**: `visibilidad` (0..1) se desvanece cuando no hay
@@ -555,9 +554,10 @@ composición. La escena se parte en tres capas:
   `{ cargada, piezas, crecimiento, llegoArriba, apertura, ramas, visibilidad }`
   y `plantaDebug.paso(dt)` simula frames. Con `window.obtenerManos` intervenido se
   verificó: sin mano → `visibilidad 0` y paisaje vacío; mano abierta sin puño →
-  nada; puño → aparece la planta; puño en la punta → `apertura 0` con
-  `ramas 0`; mano abierta en la punta → `apertura 1` y `ramas 1`; cerrar la
-  mano → `apertura 0` y `ramas 0`; bajar el puño → capullo; dedos agitados →
+  nada; puño → aparece la planta; puño en la punta → `apertura 1` y `ramas 0`
+  (la flor principal se abre con el crecimiento); mano abierta en la punta →
+  `ramas 1`; cerrar la mano → la flor sigue abierta y `ramas 0`; bajar el puño →
+  `apertura 0` (capullo); dedos agitados →
   `destellos 0.72` y 59 partículas; `reiniciar()` → todo en 0. También se
   verificó que la inclinación llega a ±0.3 rad siguiendo la mano.
   `plantas()` devuelve las dos entradas del catálogo.

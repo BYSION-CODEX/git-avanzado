@@ -110,3 +110,11 @@ Branch: `main` · Delivery: single-pr · Runner: Chrome headless por CDP (sin c�
 - Verificación con zoom real (Edge headless, ramas = 1, anclaje rotado por la inclinación) y análisis de alfa del PNG del tallo: a la altura de las uniones, la banda visible del tallo está en `x ≈ [-0.0286, -0.0064]` (derecha) y `[-0.0312, -0.0090]` (izquierda) de `full`, no en `x = 0`.
 - `unionDerecha` pasó de `0.011` a `-0.0175` y `unionIzquierda` de `0` a `-0.02`: quedan sobre el centro del tallo a esa altura.
 - Capturas 15/16 a 16×: las dos ramas nacen dentro de la silueta del tallo, sin flotar ni atravesarlo.
+
+### L7 — flor principal al 100 %, ramas con la mano abierta (2026-11-11)
+
+- Pedido del usuario: al llegar al 100 % se debe abrir la flor principal; las ramas son lo único que sale en la floración (mano abierta).
+- `actualizarOrquidea()`: `objetivoApertura = enLaPunta ? 1 : 0` (antes exigía `manoAbierta`). `objetivoRamas` sigue exigiendo `apertura >= 0.33 && manoAbierta && enLaPunta`.
+- Secuencia verificada en headless: puño arriba → `crecimiento 1, apertura 1, ramas 0`; mano abierta → `apertura 1, ramas 1`; puño de nuevo → `apertura 1, ramas 0`; puño abajo → `crecimiento 0.3, apertura 0`.
+- Capturas 17/18: flor principal abierta sin ramas, y luego ramas sin cambiar la flor.
+- Efecto colateral: la oleada de destellos se dispara cuando se abre la flor principal (igual que el tulipán), no cuando salen las ramas.
