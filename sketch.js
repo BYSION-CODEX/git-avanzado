@@ -213,6 +213,15 @@ const FOLLAJE = {
 /* ---------- Viento: configuración ---------- */
 
 /**
+ * Los árboles son paisaje de fondo, no protagonistas: se dibujan al 50 % de
+ * opacidad para que las plantas recorten sin mezclarse con la copa. Aplica al
+ * sprite y al follaje por igual.
+ */
+const ARBOLES = {
+  alfa: 0.5,
+};
+
+/**
  * El viento nunca se detiene ni llega a huracán. La fuerza sale de dos octavas
  * de noise —una lenta, la ráfaga; otra rápida, el pulso—, así no se lee como
  * una senoide repetida. Con las semillas de noise fijas, el patrón es el mismo
@@ -936,10 +945,13 @@ function dibujarArbolesViento(t, plano) {
     push();
     translate(arbol.x, arbol.y);
     rotate(angulo);
+    // Fondo, no protagonista: el sprite y su follaje comparten la opacidad.
+    tint(255, 255 * ARBOLES.alfa);
     image(arbol.grafico, -arbol.ancho * 0.5, -arbol.baseY);
+    noTint();
     // Las hojas van después del sprite: nacen sobre las puntas y las ramas
     // finas se leen por detrás del follaje, como en un árbol real.
-    dibujarFollaje(arbol, vida);
+    dibujarFollaje(arbol, vida, ARBOLES.alfa);
     pop();
   }
 }
@@ -952,7 +964,7 @@ function dibujarArbolesViento(t, plano) {
  * Un solo `fill` por árbol y un polígono por hoja: seis vértices ya resueltos,
  * sin rotaciones ni trigonometría por frame.
  */
-function dibujarFollaje(arbol, vida) {
+function dibujarFollaje(arbol, vida, alfa = 1) {
   const hojas = arbol.hojas;
   if (vida <= 0 || !hojas || hojas.length === 0) return;
 
@@ -972,7 +984,7 @@ function dibujarFollaje(arbol, vida) {
   const alfaPrevio = lienzo.globalAlpha;
 
   lienzo.fillStyle = `rgb(${Math.round(tono[0])}, ${Math.round(tono[1])}, ${Math.round(tono[2])})`;
-  lienzo.globalAlpha = 1;
+  lienzo.globalAlpha = alfa;
   lienzo.beginPath();
 
   for (const hoja of hojas) {

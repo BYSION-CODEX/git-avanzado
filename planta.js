@@ -263,7 +263,7 @@
       archivo: 'tres-flores-tallo.png',
       personalizado: 'tres-flores',
       x: 0.22,
-      altura: 0.4,
+      altura: 0.46,
       capaSuelo: 2,
       separacionSuelo: 0.01,
       talloX: 0.5,
@@ -284,7 +284,7 @@
       principal: true,
       // Centrada y a escala de protagonista.
       x: 0.5,
-      altura: 0.44,
+      altura: 0.5,
       capaSuelo: 2,
       separacionSuelo: 0.01,
       talloX: 0.5,

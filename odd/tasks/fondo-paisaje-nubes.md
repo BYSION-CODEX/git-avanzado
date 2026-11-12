@@ -89,3 +89,10 @@ Branch: `main` · Delivery: single-pr · Runner: Chrome headless por CDP (sin c�
 - Se retiraron del fondo generado cielo, suelo, piedras, ramas, fábricas y humo; se mantuvieron `CAPAS_SUELO` y `bordeDeSuelo()` para anclar árboles, pasto y plantas.
 - `ResizeObserver` sobre `#lienzo-contenedor` para que el canvas llene el panel cuando la cámara cambia de estado.
 - Verificación headless y capturas; documentación actualizada en `AGENTS.md`.
+
+### L4 — plantas al frente (2026-11-11)
+
+- Pedido del usuario: las plantas se mezclaban con el fondo y los árboles; bajar los árboles a ~50 % de opacidad.
+- `ARBOLES.alfa = 0.5` aplicado con `tint()` al sprite y `globalAlpha` al follaje.
+- Plantas agrandadas para leer como primer plano: orquídea `altura` 0.44 → 0.50 y tres flores 0.40 → 0.46. La base no se movió; el montaje escala completo porque `full = alto * def.altura`.
+- Verificación headless repetida: crecimiento 1, `opacidadAtardecer` 1, floración y oleadas siguen funcionando, reinicio en 0.

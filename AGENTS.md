@@ -94,6 +94,9 @@ composición. La escena se parte en tres capas:
   profundidad: el árbol cercano recorre más píxeles en la copa que el lejano.
   `VIENTO.velocidadVaiven` es el ritmo del vaivén; pasado ~2.5 se lee como
   vibración y no como viento.
+- **Los árboles son fondo, no protagonistas**: `ARBOLES.alfa` (0.5) se aplica con
+  `tint()` al sprite y con `globalAlpha` al follaje, para que las plantas
+  recorten sin mezclarse con la copa.
 - **Pasto**: posiciones y forma de cada brizna se sortean una vez en
   `crearMatujos()`. Cada brizna conserva su largo y gira sobre su base, así que
   al doblarse la punta baja. El ángulo se acota en `MATUJOS.anguloMaximo` (~77°):
@@ -439,8 +442,9 @@ composición. La escena se parte en tres capas:
   (`naturalWidth / naturalHeight`). Nunca se estira ni se comprime, y la base
   queda clavada sobre el suelo mientras la planta crece hacia arriba.
 - `altura` (fracción del alto del lienzo al 100%) y `x` (fracción del ancho) son
-  de cada planta: la orquídea va en `0.5` / `0.44` y la planta de tres flores en
-  `0.22` / `0.40`. Cada `faseViento` distinta evita que se mezan al unísono.
+  de cada planta: la orquídea va en `0.5` / `0.5` y la planta de tres flores en
+  `0.22` / `0.46`. Cada `faseViento` distinta evita que se mezan al unísono.
+  Ambas se agrandaron para que lean como primer plano delante de los árboles.
 - La imagen se carga con callbacks (`new Image()`), como el personaje. Hasta que
   no está lista esa planta no se dibuja; si falta el archivo, el resto de la
   experiencia sigue andando y solo se pierde esa planta.
@@ -477,13 +481,13 @@ composición. La escena se parte en tres capas:
 
 ### Orquídea: montaje de piezas y flor reversible
 
-- Es **la entrada central** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.44`,
+- Es **la entrada central** del catálogo (`id: 'orquidea'`, `x: 0.5`, `altura: 0.5`,
   `capaSuelo: 2`), centrada en la composición. No es una ilustración única:
   `personalizado: 'orquidea'` desvía el dibujo a `dibujarOrquidea()`. La
   interacción compartida —crecimiento, inclinación, sacudida, viento y
   partículas— es la misma; lo propio es el montaje y su estado.
 - **20 piezas** en `ORQUIDEA.piezas`, en fracciones de
-  `full = alto del lienzo * 0.44`. Cada pieza declara `ancho`, `ax`/`ay` (el
+  `full = alto del lienzo * 0.5`. Cada pieza declara `ancho`, `ax`/`ay` (el
   punto que se clava en el esqueleto, 0..1) y su archivo `orquidea-*.png`. Se
   cargan con callbacks; la planta aparece cuando terminaron todas, y una pieza
   faltante solo se saltea.
@@ -555,11 +559,11 @@ composición. La escena se parte en tres capas:
 
 ### Planta de tres flores: montaje lateral y secuencia de tres gestos
 
-- Es la segunda entrada del catálogo (`id: 'tres_flores'`, `x: 0.22`, `altura: 0.40`,
+- Es la segunda entrada del catálogo (`id: 'tres_flores'`, `x: 0.22`, `altura: 0.46`,
   `capaSuelo: 2`). Va **primera en `PLANTAS`** (se dibuja debajo) y a la
   izquierda de la pantalla, lejos de la orquídea. La orquídea conserva
   `principal: true`, así el porcentaje y el follaje siguen leyendo su crecimiento.
-- **14 piezas** en `TRES_FLORES.piezas`, en fracciones de `full = alto * 0.40`.
+- **14 piezas** en `TRES_FLORES.piezas`, en fracciones de `full = alto * 0.46`.
   Los nombres salieron de `Plantas_FINAL`; `flores_de_colores-09.png` se asignó a
   la **rama derecha** por su forma: un tallo curvo que nace abajo a la izquierda
   y sube a la derecha, espejo de `..._rama izquierda`. No cambiar ese mapeo por
