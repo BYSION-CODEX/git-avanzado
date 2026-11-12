@@ -80,3 +80,24 @@ hasta 0.06 de `full` a la izquierda de donde se las había puesto, así que
 flotaban. Se recalcularon las seis `union` contra los bordes reales del tallo
 (medidos del PNG) y quedan tapadas por él, que se dibuja después. Además la
 primera rama bajó de 0.86 a 0.845 para no cruzarse con el gancho de la punta.
+
+### L3 — segundo pedido
+
+> «si la mano desaparece aunque las flores hayan estgad en floración, o en 100%
+> de crecimiento, el fondo debe volver a hacerse gris. Tambien quiero que broten
+> mas destellos de las dflores, mucho más, algo mas dramtico que estas particulas
+> se extiendan mas hacia donde drincan»
+
+- `progresoDePlantas()` (en `sketch.js`) devuelve 0 sin manos en cuadro: el
+  atardecer, las nubes y los destellos del horizonte vuelven a gris con
+  `velocidadSalida` (4.5/s), aunque las plantas hayan quedado al 100 % y las
+  flores abiertas. La oleada de floración tampoco dispara sin manos.
+- Destellos: `MAX_DESTELLOS` 90 → 300, `EMISION_DESTELLOS` 55 → 160/s,
+  `MAX_PARTICULAS` 160 → 420. Ahora nacen en un radio de 0.14 de `full` y salen
+  disparados hacia afuera (rapidez `escala·(0.7..1.5)`, roce 0.35 por partícula,
+  gravedad 4): 92 px de promedio y 216 px de máximo desde el centro de la flor,
+  contra los ~40 px de antes. El halo bajó a 3× y alfa 0.32 para que se lean
+  puntos y no una mancha.
+- Verificado con el banco de destellos (`banco_destellos.js`, con la planta a
+  pleno y los dedos agitados): 234 destellos vivos en la planta derecha y el
+  fotograma repintado muestra la lluvia saliendo de las flores.

@@ -623,9 +623,17 @@ function dibujarFondosPaisaje() {
  * Progreso del paisaje: el mayor crecimiento alcanzado entre todas las
  * plantas del catálogo. Con una sola planta coincide con ella; con varias,
  * manda la que más creció, como pide la escena.
+ *
+ * Solo cuenta mientras haya alguna mano en cuadro: el atardecer, las nubes y
+ * los destellos del horizonte los sostiene la presencia del usuario, no la
+ * altura que ya alcanzó la planta. Si la mano desaparece, el paisaje vuelve a
+ * gris aunque las flores hayan quedado abiertas al 100 %.
  */
 function progresoDePlantas() {
   if (typeof plantaDebug === 'undefined' || !plantaDebug) return 0;
+
+  const manos = typeof obtenerManos === 'function' ? obtenerManos() : null;
+  if (!manos || manos.length === 0) return 0;
 
   if (typeof plantaDebug.plantas === 'function') {
     const lista = plantaDebug.plantas();
@@ -687,6 +695,11 @@ function actualizarPaisajeInteractivo(dt) {
 function actualizarOleadaPorFlor() {
   if (typeof plantaDebug === 'undefined' || !plantaDebug) return;
   if (typeof plantaDebug.plantas !== 'function') return;
+
+  // Sin manos en cuadro no hay oleada: al salir la mano el paisaje se apaga y
+  // la flor sigue abierta, así que no corresponde celebrar nada.
+  const manos = typeof obtenerManos === 'function' ? obtenerManos() : null;
+  if (!manos || manos.length === 0) return;
 
   const lista = plantaDebug.plantas();
   if (!Array.isArray(lista)) return;

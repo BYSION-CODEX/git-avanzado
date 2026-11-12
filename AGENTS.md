@@ -134,8 +134,15 @@ composición. La escena se parte en tres capas:
   `progresoDePlantas()` (el mayor `crecimiento` entre las plantas del catálogo),
   lo pasa por `suavizar()` y lo amortigua con `velocidadEntrada` / `velocidadSalida`.
   Esa lectura es también la que usan nubes y destellos.
-- **Se conserva el color** cuando la mano baja o sale de cuadro: el crecimiento
-  no retrocede sin un puño nuevo, así que la opacidad se queda en 1.
+- **Sin manos no hay paisaje**: `progresoDePlantas()` devuelve 0 si `obtenerManos()`
+  viene vacío, así el atardecer, las nubes y los destellos del horizonte vuelven
+  a gris aunque las plantas hayan quedado al 100 % y las flores abiertas. Las
+  plantas conservan su altura (ese es su contrato), pero el color lo sostiene la
+  presencia de la mano. La caída usa `velocidadSalida` (4.5/s), así que el gris
+  vuelve en menos de un segundo y sin salto.
+- **Se conserva el color** cuando el puño baja: el crecimiento no retrocede sin
+  un puño nuevo y la mano sigue en cuadro, así que la opacidad se queda en 1.
+  Lo que la apaga es que la mano salga de cuadro, no que se cierre.
 - **Reinicio**: si el crecimiento cae de golpe a 0, `reiniciarEfectosPaisaje()`
   limpia la oleada y rearma las flores; la opacidad vuelve a 0 con la misma
   amortiguación. Recargar la página también reinicia.
@@ -736,20 +743,25 @@ composición. La escena se parte en tres capas:
 - El temblor son **dos armónicos** (`FRECUENCIA_TEMBLOR` 0.019 rad/ms ≈ 3 Hz,
   más un segundo a 1.73× con 35 % de amplitud): se lee como un tallo que vibra,
   no como un metrónomo. `AMPLITUD_TEMBLOR` (0.06 rad) es el pico a intensidad 1.
-- Partículas: máximo `MAX_PARTICULAS` (160), emisión `EMISION_MAXIMA` por segundo
+- Partículas: máximo `MAX_PARTICULAS` (420), emisión `EMISION_MAXIMA` por segundo
   × intensidad. Cada una con tamaño, velocidad y vida aleatorios; frenan por
   roce y flotan hacia arriba. El alfa cae con la vida restante, así desaparecen
-  gradualmente.
+  gradualmente. El roce y la gravedad se pueden pisar por partícula
+  (`particula.roce` / `particula.gravedad`); el polen usa los de siempre.
 - **Destellos por dedos**: además del polen de la sacudida, si las puntas se
   agitan respecto de la muñeca (`VELOCIDAD_MINIMA_DEDOS` 0.55) la flor emite
-  brillitos (`MAX_DESTELLOS` 90, `EMISION_DESTELLOS` 55/s). Se miden las cinco
-  puntas relativas a la muñeca, así trasladar la mano entera no dispara nada.
-  Nacen alrededor del centro de la flor (`centroDeLaFlor()`), con halo suave y
+  brillitos a lo grande (`MAX_DESTELLOS` 300, `EMISION_DESTELLOS` 160/s). Se
+  miden las cinco puntas relativas a la muñeca, así trasladar la mano entera no
+  dispara nada. Nacen en un radio de 0.14 de `full` alrededor del centro de la
+  flor (`centroDeLaFlor()`) y **salen disparados hacia afuera**: rapidez
+  `escala·(0.7..1.5)`, roce 0.35 y gravedad 4, así viajan 150-300 px antes de
+  apagarse en vez de quedarse flotando. Halo suave (3× el núcleo, alfa 0.32) y
   núcleo que titila; son partículas con `destello: true`.
 - Verificado en Node: deriva lenta → 0 partículas; barrido en una dirección → 0;
-  sacudida real → intensidad 1.0 y 86 partículas; dedos agitados → 0.72 de
-  intensidad y 59 destellos; al parar → 0 en ~5 s y la altura de la planta
-  intacta.
+  sacudida real → intensidad 1.0 y 86 partículas; dedos agitados con la planta a
+  pleno → 234 destellos vivos en la planta derecha, a 92 px promedio y 216 px
+  como máximo del centro de la flor; al parar → 0 en ~5 s y la altura de la
+  planta intacta.
 
 ### Inclinación
 

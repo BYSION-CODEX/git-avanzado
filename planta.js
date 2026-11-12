@@ -482,7 +482,7 @@
   const AMPLITUD_TEMBLOR = 0.06;
   const FRECUENCIA_TEMBLOR = 0.019; // rad/ms ≈ 3 Hz
 
-  const MAX_PARTICULAS = 160;
+  const MAX_PARTICULAS = 420;
   const EMISION_MAXIMA = 70; // partículas por segundo a intensidad 1
   const COLOR_POLEN = '#e8d9a8';
 
@@ -497,8 +497,8 @@
   const VELOCIDAD_MINIMA_DEDOS = 0.55; // unidades normalizadas por segundo
   const ATAQUE_DEDOS = 12;
   const RELAJO_DEDOS = 4;
-  const MAX_DESTELLOS = 90;
-  const EMISION_DESTELLOS = 55; // destellos por segundo a intensidad 1
+  const MAX_DESTELLOS = 300;
+  const EMISION_DESTELLOS = 160; // destellos por segundo a intensidad 1
   const COLOR_DESTELLO = '#fff1bf';
 
   /* ---------- Inclinación ---------- */
@@ -1529,10 +1529,11 @@
     }
 
     for (const particula of planta.particulas) {
-      // Roce: frenan rápido y quedan flotando.
-      const roce = Math.exp(-1.6 * dt);
+      // Roce: frenan rápido y quedan flotando. Los destellos traen el suyo,
+      // mucho más bajo, para alejarse de la flor antes de apagarse.
+      const roce = Math.exp(-(particula.roce || 1.6) * dt);
       particula.vx *= roce;
-      particula.vy = particula.vy * roce - 18 * dt;
+      particula.vy = particula.vy * roce - (particula.gravedad || 18) * dt;
 
       particula.x += particula.vx * dt;
       particula.y += particula.vy * dt;
@@ -1645,28 +1646,36 @@
     };
   }
 
-  /** Un brillito de polen que nace alrededor de la flor y flota hacia arriba. */
+  /**
+   * Un brillito de polen que nace alrededor de la flor y sale disparado hacia
+   * afuera. Los destellos rozan poco y casi no caen, así se alejan de la flor
+   * en vez de quedarse flotando alrededor.
+   */
   function emitirDestello(planta, ahora) {
     const centro = centroDeLaFlor(planta, ahora);
     if (!centro) return;
 
-    const radio = centro.full * 0.075;
+    const radio = centro.full * 0.14;
     const angulo = Math.random() * Math.PI * 2;
     const distancia = Math.sqrt(Math.random()) * radio;
-    const vida = 0.7 + Math.random() * 0.9;
+    const vida = 1.2 + Math.random() * 1.2;
     const escala = altoCSS * 0.1;
+    const rapidez = escala * (0.7 + Math.random() * 0.8);
 
     planta.particulas.push({
       x: centro.x + Math.cos(angulo) * distancia,
       y: centro.y + Math.sin(angulo) * distancia,
-      vx: (Math.random() - 0.5) * escala * 0.35,
-      vy: -escala * (0.08 + Math.random() * 0.18),
+      vx: Math.cos(angulo) * rapidez + (Math.random() - 0.5) * escala * 0.2,
+      vy: Math.sin(angulo) * rapidez - escala * (0.1 + Math.random() * 0.2),
       vida,
       vidaMax: vida,
-      tamano: altoCSS * (0.0013 + Math.random() * 0.0018),
+      tamano: altoCSS * (0.0025 + Math.random() * 0.0025),
       destello: true,
       color: COLOR_DESTELLO,
       fase: Math.random() * Math.PI * 2,
+      // Roce y gravedad propias: un destello tiene que viajar, no flotar.
+      roce: 0.35,
+      gravedad: 4,
     });
   }
 
@@ -1688,9 +1697,9 @@
         const titileo = 0.55 + 0.45 * Math.sin(particula.vida * 26 + particula.fase);
         c.fillStyle = particula.color;
 
-        c.globalAlpha = alfa * 0.3 * titileo;
+        c.globalAlpha = alfa * 0.32 * titileo;
         c.beginPath();
-        c.arc(particula.x, particula.y, particula.tamano * 3.4, 0, Math.PI * 2);
+        c.arc(particula.x, particula.y, particula.tamano * 3, 0, Math.PI * 2);
         c.fill();
 
         c.globalAlpha = alfa * titileo;
