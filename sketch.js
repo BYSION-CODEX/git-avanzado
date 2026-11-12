@@ -11,10 +11,11 @@
    - Captura de video de la cámara montada en #camara-contenedor.
    - Body Pose y Hand Pose corriendo sobre ese video.
 
-   Nota de rendimiento: la escena NO se redibuja completa por frame. El fondo
-   (cielo, suelo, piedras y ramas caídas) se hornea una sola vez en un
-   p5.Graphics y se dibuja con image(). Solo se anima la capa con pocos
-   trazos: árboles cacheados como sprites, pasto, polvo y rachas.
+   Nota de rendimiento: el paisaje de fondo son dos PNG preestáticos
+   (`fondo_gris_neblina.png` y `fondo_atardecer_color.png`) que se dibujan con
+   el mismo encuadre; la opacidad del atardecer sigue el crecimiento de las
+   plantas. Solo se anima la capa con pocos trazos: nubes, destellos, árboles
+   cacheados como sprites, pasto, polvo y rachas.
    El follaje no se hornea: son polígonos ya resueltos que se dibujan solo si
    el crecimiento de la planta ya habilitó esa hoja (máximo 34 por árbol).
    ============================================================ */
@@ -41,8 +42,14 @@ function setup() {
   // Sin esto, un monitor de alta densidad cuadruplica el costo de dibujo.
   pixelDensity(1);
 
+  // El panel puede cambiar de alto después de setup() (por ejemplo, cuando la
+  // cámara termina de cargar y aparecen sus textos). Sin esto el canvas queda
+  // más chico que su marco y el paisaje no llena el lienzo visible.
+  observarTamanoLienzo(contenedor);
+
   // Escenario vivo: draw() corre a 60 fps y el viento avanza cada frame.
-  // El fondo se hornea una sola vez acá y solo se reconstruye al redimensionar.
+  // El paisaje son dos PNG que se precargan ya, antes de cualquier interacción.
+  cargarFondosPaisaje();
   construirEscenario();
 
   // El personaje que caminaba en el fondo se retiró de la escena.
@@ -56,7 +63,6 @@ function draw() {
   // Un resize durante el arrastre dispara muchos eventos: se reconstruye una
   // sola vez, en el frame siguiente, y no una vez por evento.
   if (escenaDesactualizada) construirEscenario();
-  if (!fondoEstatico) return;
 
   // Acotado: al volver de una pestaña en segundo plano deltaTime puede valer
   // segundos y el viento daría un salto.
@@ -65,6 +71,7 @@ function draw() {
 
   actualizarViento(dt);
   actualizarVida(dt);
+  actualizarPaisajeInteractivo(dt);
   dibujarEscenario(relojEscena, dt);
 }
 
@@ -82,34 +89,55 @@ function windowResized() {
   escenaDesactualizada = true;
 }
 
+/**
+ * El alto del panel no solo cambia al redimensionar la ventana: también cuando
+ * la cámara pasa de "cargando" a "lista" o "error" y sus textos reorganizan el
+ * grid. El ResizeObserver ajusta el canvas a su marco en ese caso y reconstruye
+ * la escena una sola vez.
+ */
+let observadorLienzo = null;
+
+function observarTamanoLienzo(contenedor) {
+  if (typeof ResizeObserver === 'undefined' || !contenedor) return;
+
+  if (observadorLienzo) observadorLienzo.disconnect();
+
+  observadorLienzo = new ResizeObserver(() => {
+    const ancho = contenedor.clientWidth;
+    const alto = contenedor.clientHeight;
+    if (!ancho || !alto) return;
+    if (Math.abs(width - ancho) < 2 && Math.abs(height - alto) < 2) return;
+
+    resizeCanvas(ancho, alto);
+    escenaDesactualizada = true;
+  });
+
+  observadorLienzo.observe(contenedor);
+}
+
 /* ============================================================
    ESCENARIO
-   Paisaje deteriorado en tres planos de profundidad. El gris no es
-   uniforme: cada plano es más oscuro y más nítido cuanto más cerca
-   está, así el ojo construye distancia sin necesidad de perspectiva.
+   El paisaje es un PNG (gris con neblina) con un segundo PNG a color
+   encima cuya opacidad la gobierna el crecimiento de las plantas.
+   La capa viva sigue siendo procedural: árboles que reverdecen, pasto,
+   polvo, rachas, nubes y destellos.
    ============================================================ */
 
 /** Semilla fija: la composición es idéntica en cada reconstrucción. */
 const SEMILLA = 20261105;
 
-/** Paleta desaturada: frío arriba, tierra muerta abajo. */
+/**
+ * Paleta de la capa viva. El paisaje ya no se pinta con colores: es un PNG.
+ * Quedan los tonos de árboles, pasto, polvo y el gris de respaldo del fondo.
+ */
 const PALETA = {
-  cieloAlto: [36, 40, 46],
+  // Respaldo opaco mientras los PNG terminan de cargar.
   cieloBajo: [150, 154, 158],
-  bruma: [162, 167, 172],
   polvo: [212, 216, 220],
-
-  sueloLejos: [94, 96, 97],
-  sueloMedio: [62, 63, 63],
-  sueloCerca: [37, 37, 36],
 
   arbolLejos: [110, 116, 122],
   arbolMedio: [70, 74, 78],
   arbolCerca: [26, 27, 29],
-
-  piedraLejos: [88, 89, 88],
-  piedraMedia: [70, 71, 70],
-  piedraCerca: [51, 51, 50],
 
   pastoSeco: [99, 96, 87],
 
@@ -244,26 +272,87 @@ const RACHAS = {
 };
 
 /**
- * Fábricas lejanas: dos siluetas sobre la capa más lejana y su humo.
- * Las chimeneas son parte del fondo congelado (no se mueven); el humo es capa
- * viva y lo arrastra el mismo viento que todo lo demás. Todas las medidas son
- * fracciones del alto del lienzo para que la escala no dependa del tamaño.
+ * Paisaje de fondo: dos PNG con la MISMA composición. El gris va abajo y el
+ * atardecer encima; su opacidad sigue el crecimiento de las plantas, así la
+ * escena arranca en neblina y se llena de color a medida que crece la vida.
+ *
+ * Los dos se dibujan con el mismo encuadre y el mismo punto de alineación
+ * (`alineacion`), así las colinas quedan clavadas y el cruce no da saltos.
+ * Se precargan juntos en setup(): la transición funciona desde la primera
+ * interacción, no desde la primera carga diferida.
  */
-const FABRICA = {
-  fuentes: [
-    { fx: 0.605, cuerpo: 0.024, ancho: 0.032, chimenea: 0.052 },
-    { fx: 0.648, cuerpo: 0.017, ancho: 0.022, chimenea: 0.033 },
+const FONDO_PAISAJE = {
+  rutaGris: 'fondo_gris_neblina.png',
+  rutaAtardecer: 'fondo_atardecer_color.png',
+  // Encaje tipo `object-fit: cover`: escala el máximo de ancho y alto.
+  // El punto de alineación es el mismo para los dos fondos.
+  alineacion: { x: 0.5, y: 0.5 },
+  // Amortiguación exponencial de la opacidad: no depende del framerate.
+  velocidadEntrada: 3.2,
+  velocidadSalida: 4.5,
+};
+
+/**
+ * Nubes suaves de la capa intermedia: delante del paisaje y detrás de las
+ * plantas. Arrancan grises y con alfa bajo; a medida que aparece el atardecer
+ * viran a rosa pálido o lila. Tres velocidades distintas para que no se muevan
+ * en bloque.
+ */
+const NUBES = {
+  modelos: [
+    { y: 0.11, ancho: 0.42, velocidad: 0.011, alfa: 0.09, tono: 'rosa' },
+    { y: 0.19, ancho: 0.34, velocidad: 0.017, alfa: 0.12, tono: 'lila' },
+    { y: 0.27, ancho: 0.52, velocidad: 0.007, alfa: 0.06, tono: 'rosa' },
   ],
-  color: [124, 128, 132], // apenas más claro que el suelo: se hunde en la bruma
-  humoColor: [184, 188, 192],
-  humoAlfa: 18, // leve a propósito: se tiene que adivinar, no tapar el paisaje
-  humoPuffs: 11,
-  humoVidaMinima: 6,
-  humoVidaMaxima: 9,
-  humoSubida: 0.17, // cuánto sube el penacho, en fracciones del alto
-  humoDeriva: 0.12, // cuánto se abre a favor del viento
-  humoDiametroInicial: 0.012,
-  humoDiametroFinal: 0.055,
+  proporcion: 0.36, // alto del sprite en relación a su ancho
+  alfaMinimo: 0.06,
+  alfaMaximo: 0.12,
+  // La opacidad inicial vive dentro de [0.06, 0.12]; al crecer se permite un
+  // poco más para que el cambio de tono se note sin tapar el paisaje.
+  alzaConCrecimiento: 0.25,
+  tonoGris: [204, 208, 214],
+  tonoRosa: [243, 196, 212],
+  tonoLila: [205, 188, 228],
+};
+
+/**
+ * Destellos cálidos cerca del horizonte. Aparecen y se desvanecen con un pulso
+ * propio, cada uno en un momento distinto, y nunca superan 0.18 de opacidad.
+ */
+const DESTELLOS_PAISAJE = {
+  cantidad: 12,
+  yMin: 0.44, // fracción del alto: banda del horizonte de las imágenes
+  yMax: 0.57,
+  radioMinimo: 1.1,
+  radioMaximo: 2.6,
+  alfaMaximo: 0.18,
+  frecuenciaMinima: 0.22, // ciclos por segundo
+  frecuenciaMaxima: 0.62,
+  desde: 0.18, // progreso en el que empiezan a asomar
+  hasta: 0.72, // progreso en el que ya están plenos
+  tonoCalido: [255, 216, 160],
+  tonoRosa: [255, 190, 206],
+};
+
+/**
+ * Oleada única de destellos dorados y rosados que se dispara al florecer. Va
+ * detrás de las flores porque se dibuja en el canvas de p5, debajo de la capa
+ * `#planta-overlay`. Se rearma sola cuando la floración se cierra.
+ */
+const OLEADA_FLORES = {
+  cantidad: 54,
+  duracionMinima: 0.9,
+  duracionMaxima: 1.6,
+  radioMinimo: 1.4,
+  radioMaximo: 3.4,
+  alfaMaximo: 0.32,
+  dispersionX: 0.13, // fracción del ancho alrededor de cada flor
+  dispersionY: 0.09, // fracción del alto
+  subida: 0.1, // fracción del alto por segundo
+  tonoDorado: [255, 208, 128],
+  tonoRosa: [255, 172, 198],
+  disparo: 0.55, // floración que enciende la oleada
+  rearme: 0.15, // floración por debajo de la cual se puede volver a disparar
 };
 
 /**
@@ -309,14 +398,26 @@ const PERSONAJE = {
 
 /* ---------- Escenario: estado ---------- */
 
-let fondoEstatico = null; // p5.Graphics con cielo, suelo, piedras y ramas
+/**
+ * Estado del paisaje de fondo. Las dos imágenes se precargan en setup(); hasta
+ * que llegan se dibuja un gris plano como respaldo.
+ */
+const fondoPaisaje = {
+  gris: null,
+  atardecer: null,
+  cargando: false,
+  listo: false,
+  encuadre: null, // { x, y, w, h } en píxeles del lienzo, compartido por ambos
+};
+
 let horizonteEscena = 0;
 let arbolesViento = []; // [{ grafico, x, y, ancho, baseY, balanceo, fase }]
 let matujosViento = []; // [{ x, y, alto, briznas }]
 let polvoAire = []; // partículas en suspensión
 let rachasViento = []; // líneas de aire
-let fabricasViento = []; // geometría de las chimeneas lejanas
-let humoViento = []; // [{ fuente, puffs }] una columna por chimenea
+let nubesViento = []; // nubes suaves de la capa intermedia
+let destellosHorizonte = []; // destellos cálidos fijos alrededor del horizonte
+let oleadaFlores = []; // destellos de la floración, de vida corta
 
 /** Estado del personaje. La imagen llega async; el resto existe desde setup. */
 const personaje = {
@@ -347,13 +448,17 @@ let contextoFollaje = null; // contexto 2D cacheado para dibujar el follaje
 let capaArbolPaisaje = null; // buffer del árbol colorido interactivo del fondo
 let vidaPaisaje = 0; // 0..1, ya suavizada: cuánta vida tiene el bosque ahora
 let segundosSinManos = 0; // ausencia sostenida, para la gracia del tracking
+let progresoPaisaje = 0; // 0..1, crecimiento máximo entre plantas, ya suavizado
+let progresoPaisajeBruto = 0; // lectura del frame, para detectar el reinicio
+let opacidadAtardecer = 0; // 0..1, opacidad real de la capa a color
+const floresArmadas = {}; // id de planta → true = la próxima floración dispara oleada
 
 /* ---------- Escenario: construcción ---------- */
 
 /**
- * Hornea el fondo y prepara la capa viva. Se llama en setup() y cada vez que
- * el canvas cambia de tamaño: buffers y sprites están dimensionados en píxeles,
- * así que un resize los invalida.
+ * Prepara la capa viva y el encaje de los fondos. Se llama en setup() y cada
+ * vez que el canvas cambia de tamaño: sprites y encuadres están dimensionados
+ * en píxeles, así que un resize los invalida.
  */
 function construirEscenario() {
   if (typeof width !== 'number' || width <= 0 || height <= 0) return;
@@ -368,16 +473,14 @@ function construirEscenario() {
 
   liberarEscenario();
 
-  // Las fábricas van primero: el fondo las dibuja y el humo necesita saber
-  // dónde está la boca de cada chimenea.
-  fabricasViento = crearFabricas();
+  actualizarEncuadreFondo();
 
-  fondoEstatico = crearFondoEstatico();
   arbolesViento = crearArbolesViento();
   matujosViento = crearMatujos();
   polvoAire = crearPolvo();
   rachasViento = crearRachas();
-  humoViento = crearHumo();
+  nubesViento = crearNubesViento();
+  destellosHorizonte = crearDestellosHorizonte();
 
   // El árbol colorido se compone aparte porque su interacción vive en
   // planta.js: acá solo se le presta un contexto del tamaño del lienzo.
@@ -387,11 +490,6 @@ function construirEscenario() {
 
 /** Suelta los buffers anteriores: sin esto cada resize deja canvas vivos. */
 function liberarEscenario() {
-  if (fondoEstatico) {
-    fondoEstatico.remove();
-    fondoEstatico = null;
-  }
-
   if (capaArbolPaisaje) {
     capaArbolPaisaje.remove();
     capaArbolPaisaje = null;
@@ -399,33 +497,230 @@ function liberarEscenario() {
 
   for (const arbol of arbolesViento) arbol.grafico.remove();
   arbolesViento = [];
+
+  for (const nube of nubesViento) {
+    if (nube.graficoGris) nube.graficoGris.remove();
+    if (nube.graficoColor) nube.graficoColor.remove();
+  }
+  nubesViento = [];
 }
 
-/** Cielo, suelo, piedras y ramas caídas: lo que no se mueve nunca. */
-function crearFondoEstatico() {
-  const g = createGraphics(width, height);
-  g.pixelDensity(1);
+/* ---------- Paisaje de fondo: precarga y encuadre ---------- */
 
-  g.background(PALETA.cieloBajo[0], PALETA.cieloBajo[1], PALETA.cieloBajo[2]);
+/**
+ * Precarga los dos PNG a la vez. No usa `loadImage` de p5 porque en p5 2.x es
+ * asíncrono y devuelve una promesa; con `new Image()` el callback llega recién
+ * cuando los píxeles están listos, que es lo que necesita la transición para
+ * verse completa desde la primera interacción.
+ */
+function cargarFondosPaisaje() {
+  if (fondoPaisaje.cargando || fondoPaisaje.listo) return;
 
-  dibujarAtmosfera(g, horizonteEscena);
-  dibujarSuelo(g, horizonteEscena);
-  dibujarFabricas(g);
-  dibujarElementos(g, horizonteEscena);
+  fondoPaisaje.cargando = true;
 
-  return g;
+  const total = 2;
+  let pendientes = total;
+
+  const terminar = () => {
+    pendientes -= 1;
+    if (pendientes > 0) return;
+    fondoPaisaje.cargando = false;
+    fondoPaisaje.listo = Boolean(fondoPaisaje.gris || fondoPaisaje.atardecer);
+    actualizarEncuadreFondo();
+  };
+
+  const cargar = (ruta, destino) => {
+    const imagen = new Image();
+    imagen.onload = () => {
+      fondoPaisaje[destino] = imagen;
+      terminar();
+    };
+    imagen.onerror = () => {
+      console.error(
+        `[fondo] No se pudo cargar "${ruta}". Guardala en la raíz del proyecto, junto a index.html.`
+      );
+      terminar();
+    };
+    imagen.src = ruta;
+  };
+
+  cargar(FONDO_PAISAJE.rutaGris, 'gris');
+  cargar(FONDO_PAISAJE.rutaAtardecer, 'atardecer');
+}
+
+/**
+ * Calcula el rectángulo de dibujo de los dos fondos: `cover` sobre el lienzo,
+ * escalando el máximo entre ancho y alto, y anclado en el mismo punto. Como
+ * las dos imágenes comparten composición, el rectángulo es uno solo y las
+ * colinas no se mueven al cruzar de gris a color.
+ */
+function actualizarEncuadreFondo() {
+  const referencia = fondoPaisaje.gris || fondoPaisaje.atardecer;
+  if (!referencia) {
+    fondoPaisaje.encuadre = null;
+    return;
+  }
+
+  const anchoImagen = referencia.naturalWidth || referencia.width;
+  const altoImagen = referencia.naturalHeight || referencia.height;
+  if (!anchoImagen || !altoImagen) return;
+
+  const escala = Math.max(width / anchoImagen, height / altoImagen);
+  const anchoDibujo = anchoImagen * escala;
+  const altoDibujo = altoImagen * escala;
+  const anclaje = FONDO_PAISAJE.alineacion;
+
+  fondoPaisaje.encuadre = {
+    x: (width - anchoDibujo) * anclaje.x,
+    y: (height - altoDibujo) * anclaje.y,
+    w: anchoDibujo,
+    h: altoDibujo,
+  };
+}
+
+/**
+ * Dibuja la capa del paisaje: gris abajo y atardecer encima con su opacidad.
+ * Es la ÚNICA capa que participa de la transición; plantas, árboles y efectos
+ * no cambian de opacidad con el crecimiento.
+ */
+function dibujarFondosPaisaje() {
+  // Respaldo opaco: sin gris cargado la escena no queda transparente.
+  background(PALETA.cieloBajo[0], PALETA.cieloBajo[1], PALETA.cieloBajo[2]);
+
+  const encuadre = fondoPaisaje.encuadre;
+  if (!encuadre) return;
+
+  const contexto = contextoDeDibujo();
+  if (!contexto) return;
+
+  contexto.save();
+
+  if (fondoPaisaje.gris) {
+    contexto.globalAlpha = 1;
+    contexto.drawImage(fondoPaisaje.gris, encuadre.x, encuadre.y, encuadre.w, encuadre.h);
+  }
+
+  if (fondoPaisaje.atardecer && opacidadAtardecer > 0.001) {
+    contexto.globalAlpha = opacidadAtardecer;
+    contexto.drawImage(fondoPaisaje.atardecer, encuadre.x, encuadre.y, encuadre.w, encuadre.h);
+  }
+
+  contexto.restore();
+}
+
+/* ---------- Paisaje interactivo: progreso y transición ---------- */
+
+/**
+ * Progreso del paisaje: el mayor crecimiento alcanzado entre todas las
+ * plantas del catálogo. Con una sola planta coincide con ella; con varias,
+ * manda la que más creció, como pide la escena.
+ */
+function progresoDePlantas() {
+  if (typeof plantaDebug === 'undefined' || !plantaDebug) return 0;
+
+  if (typeof plantaDebug.plantas === 'function') {
+    const lista = plantaDebug.plantas();
+    let maximo = 0;
+    if (Array.isArray(lista)) {
+      for (const planta of lista) {
+        const valor = Number(planta && planta.crecimiento);
+        if (Number.isFinite(valor) && valor > maximo) maximo = valor;
+      }
+    }
+    return constrain(maximo, 0, 1);
+  }
+
+  if (typeof plantaDebug.crecimiento === 'function') {
+    const valor = Number(plantaDebug.crecimiento());
+    return Number.isFinite(valor) ? constrain(valor, 0, 1) : 0;
+  }
+
+  return 0;
+}
+
+/**
+ * Un paso de la transición del paisaje.
+ *
+ * - La opacidad del atardecer sigue al crecimiento con amortiguación
+ *   exponencial: sube suave y no depende del framerate.
+ * - Al reiniciar, el crecimiento de las plantas cae de golpe a 0. Se detecta
+ *   ese salto para limpiar la oleada y devolver el ciclo a gris.
+ * - La floración dispara una única oleada por apertura; se rearma cuando la
+ *   flor vuelve a cerrarse.
+ */
+function actualizarPaisajeInteractivo(dt) {
+  const bruto = progresoDePlantas();
+
+  // Reinicio: el crecimiento pasó de algo a nada en un solo frame. La capa
+  // vuelve sola a gris por la amortiguación, pero los destellos se limpian ya.
+  if (bruto <= 0.001 && progresoPaisajeBruto > 0.02) reiniciarEfectosPaisaje();
+
+  progresoPaisajeBruto = bruto;
+
+  // Suavizado del progreso: el crecimiento de planta.js ya viene filtrado, pero
+  // la curva de la opacidad también se suaviza para que el cambio se lea lento.
+  const objetivo = suavizar(bruto);
+  const rapidez = objetivo > progresoPaisaje ? FONDO_PAISAJE.velocidadEntrada : FONDO_PAISAJE.velocidadSalida;
+  progresoPaisaje += (objetivo - progresoPaisaje) * (1 - Math.exp(-rapidez * dt));
+  if (Math.abs(objetivo - progresoPaisaje) < 0.001) progresoPaisaje = objetivo;
+
+  opacidadAtardecer = progresoPaisaje;
+
+  actualizarOleadaPorFlor();
+}
+
+/**
+ * Dispara una oleada por cada planta que cruza el umbral de floración, y la
+ * rearma cuando esa flor vuelve a cerrarse. Así la orquídea y la planta de
+ * tres flores tienen su propio momento, y una misma flor no repite la oleada
+ * mientras siga abierta.
+ */
+function actualizarOleadaPorFlor() {
+  if (typeof plantaDebug === 'undefined' || !plantaDebug) return;
+  if (typeof plantaDebug.plantas !== 'function') return;
+
+  const lista = plantaDebug.plantas();
+  if (!Array.isArray(lista)) return;
+
+  for (const planta of lista) {
+    if (!planta) continue;
+
+    const id = String(planta.id || 'planta');
+    const flor = Math.max(
+      Number.isFinite(Number(planta.florecimiento)) ? Number(planta.florecimiento) : 0,
+      Number.isFinite(Number(planta.apertura)) ? Number(planta.apertura) : 0
+    );
+    const armada = floresArmadas[id] !== false;
+
+    if (armada && flor >= OLEADA_FLORES.disparo) {
+      floresArmadas[id] = false;
+      dispararOleadaFlores(centroDePlanta(planta));
+    } else if (!armada && flor <= OLEADA_FLORES.rearme) {
+      floresArmadas[id] = true;
+    }
+  }
+}
+
+/** Devuelve el paisaje a gris y limpia todo lo que dependía del crecimiento. */
+function reiniciarEfectosPaisaje() {
+  oleadaFlores = [];
+  for (const clave of Object.keys(floresArmadas)) delete floresArmadas[clave];
 }
 
 /* ---------- Escenario: dibujo por frame ---------- */
 
 /** Punto de entrada de la capa viva. Orden = de atrás hacia adelante. */
 function dibujarEscenario(t, dt) {
-  if (!fondoEstatico) return;
+  // 1. Paisaje: gris + atardecer con la opacidad del crecimiento.
+  dibujarFondosPaisaje();
 
-  image(fondoEstatico, 0, 0);
-  // El humo y las rachas van detrás de los árboles: son aire de cielo, no polvo
-  // encima de una copa.
-  dibujarHumo(t, dt);
+  // 2. Capa intermedia animada: delante del paisaje y detrás de las plantas.
+  //    Nubes y destellos leen el mismo progreso que la transición.
+  dibujarNubes(t, dt);
+  dibujarDestellosHorizonte(t);
+  actualizarDibujarOleadaFlores(dt);
+
+  // 3. Capa viva del paisaje: aire, árboles, polvo y pasto.
   dibujarRachas(t, dt);
   // Los árboles se dibujan por planos para poder intercalar al personaje en el
   // medio: camina detrás de los árboles cercanos y delante de los lejanos.
@@ -498,47 +793,17 @@ function suavizar(t) {
   return acotado * acotado * (3 - 2 * acotado);
 }
 
-/* ---------- Atmósfera ---------- */
-
-/**
- * Cielo con gradiente y banda de bruma sobre el horizonte. La bruma es lo que
- * apaga el fondo y produce la sensación de distancia. El polvo que había acá
- * ahora es dinámico (ver capa viva): quieto no aportaba el aire que se mueve.
- */
-function dibujarAtmosfera(g, horizonte) {
-  const finCielo = horizonte + height * 0.04;
-
-  // Gradiente vertical: oscuro arriba, claro al ras del suelo.
-  g.strokeWeight(1);
-  g.noFill();
-  for (let y = 0; y < finCielo; y += 1) {
-    const t = suavizar(y / finCielo);
-    g.stroke(lerpColor(color(...PALETA.cieloAlto), color(...PALETA.cieloBajo), t));
-    g.line(0, y, width, y);
-  }
-
-  // Banda de bruma: se acumula justo sobre el horizonte.
-  g.noStroke();
-  const altoBruma = height * 0.16;
-  const pasos = 30;
-  for (let i = 0; i < pasos; i += 1) {
-    const t = i / (pasos - 1);
-    g.fill(PALETA.bruma[0], PALETA.bruma[1], PALETA.bruma[2], 30 * t);
-    g.rect(0, horizonte - altoBruma + t * altoBruma, width, altoBruma / pasos + 1);
-  }
-}
-
 /* ---------- Suelo ---------- */
 
 /**
- * Parámetros de las tres franjas de terreno. Viven acá porque el suelo y la
- * ubicación de árboles y piedras tienen que usar EL MISMO relieve: si no,
- * los elementos flotan sobre la cresta o quedan enterrados.
+ * Parámetros de las tres franjas de terreno. Ya no se dibujan: el paisaje es
+ * un PNG. Se conservan porque la base de árboles, pasto y plantas se apoya en
+ * este mismo relieve, así los elementos no flotan ni quedan enterrados.
  */
 const CAPAS_SUELO = [
-  { base: 0.02, amplitud: 0.035, tono: 'sueloLejos', escala: 0.006, fase: 0 },
-  { base: 0.13, amplitud: 0.05, tono: 'sueloMedio', escala: 0.009, fase: 40 },
-  { base: 0.27, amplitud: 0.06, tono: 'sueloCerca', escala: 0.012, fase: 90 },
+  { base: 0.02, amplitud: 0.035, escala: 0.006, fase: 0 },
+  { base: 0.13, amplitud: 0.05, escala: 0.009, fase: 40 },
+  { base: 0.27, amplitud: 0.06, escala: 0.012, fase: 90 },
 ];
 
 /**
@@ -548,48 +813,6 @@ const CAPAS_SUELO = [
 function bordeDeSuelo(x, capa, horizonte) {
   const baseY = horizonte + height * capa.base;
   return baseY + (noise(x * capa.escala + capa.fase, capa.fase) - 0.5) * height * capa.amplitud;
-}
-
-/**
- * Tres capas de terreno. Cada una se dibuja completa hasta el borde inferior,
- * así la siguiente tapa a la anterior: eso crea el escalonado de profundidad.
- */
-function dibujarSuelo(g, horizonte) {
-  for (const capa of CAPAS_SUELO) {
-    dibujarCapaDeSuelo(g, capa, horizonte);
-  }
-}
-
-/**
- * Una franja de terreno con borde superior irregular (noise) y estratos
- * internos que siguen el mismo relieve, como capas de tierra seca.
- */
-function dibujarCapaDeSuelo(g, capa, horizonte) {
-  const tono = PALETA[capa.tono];
-  const amplitud = height * capa.amplitud;
-
-  g.noStroke();
-  g.fill(tono[0], tono[1], tono[2]);
-
-  g.beginShape();
-  g.vertex(0, height);
-  for (let x = 0; x <= width; x += 5) {
-    g.vertex(x, bordeDeSuelo(x, capa, horizonte));
-  }
-  g.vertex(width, height);
-  g.endShape(CLOSE);
-
-  // Estratos: líneas suaves paralelas al borde, apenas más oscuras.
-  g.noFill();
-  for (let i = 1; i <= 3; i += 1) {
-    g.stroke(tono[0] - 9, tono[1] - 9, tono[2] - 9, 95);
-    g.strokeWeight(1);
-    g.beginShape();
-    for (let x = 0; x <= width; x += 8) {
-      g.vertex(x, bordeDeSuelo(x, capa, horizonte) + amplitud * 0.85 * i);
-    }
-    g.endShape();
-  }
 }
 
 /* ---------- Árboles ---------- */
@@ -953,11 +1176,23 @@ function crearHoja(x, y, angulo, escala, indice) {
   return { x, y, angulo, escala, indice, distancia: 0, orden: 0, vertices: null };
 }
 
-/** Acceso de solo lectura para comprobar el follaje desde la consola. */
+/** Acceso de solo lectura para comprobar el paisaje desde la consola. */
 window.escenarioDebug = {
   vida: () => vidaDelPaisaje(),
   hojasPorArbol: () => arbolesViento.map((arbol) => arbol.hojas.length),
   hojasTotales: () => arbolesViento.reduce((total, arbol) => total + arbol.hojas.length, 0),
+  // Paisaje de fondo: encaje común, progreso y opacidad real del atardecer.
+  fondo: () => ({
+    grisCargado: Boolean(fondoPaisaje.gris),
+    atardecerCargado: Boolean(fondoPaisaje.atardecer),
+    listo: fondoPaisaje.listo,
+    encuadre: fondoPaisaje.encuadre ? { ...fondoPaisaje.encuadre } : null,
+    progreso: progresoPaisaje,
+    opacidadAtardecer,
+  }),
+  nubes: () => nubesViento.length,
+  destellosHorizonte: () => destellosHorizonte.length,
+  oleada: () => oleadaFlores.length,
 };
 
 /**
@@ -1044,129 +1279,9 @@ function dibujarRama(g, x, y, largo, angulo, grosor, nivel, tono, semilla, hojas
   }
 }
 
-/* ---------- Elementos decorativos ---------- */
-
-/** Piedras y ramas caídas. Más grandes cuanto más cerca. */
-function dibujarElementos(g, horizonte) {
-  // Piedras lejanas: apoyadas sobre la primera capa.
-  for (let i = 0; i < 7; i += 1) {
-    const x = random(width);
-    const y = bordeDeSuelo(x, CAPAS_SUELO[0], horizonte) + height * random(0.01, 0.05);
-    dibujarPiedra(g, x, y, random(3, 6), PALETA.piedraLejos);
-  }
-
-  // Piedras del plano medio
-  for (let i = 0; i < 6; i += 1) {
-    const x = random(width);
-    const y = bordeDeSuelo(x, CAPAS_SUELO[1], horizonte) + height * random(0.02, 0.09);
-    dibujarPiedra(g, x, y, random(6, 11), PALETA.piedraMedia);
-  }
-
-  // Piedras cercanas: las que dan escala al primer plano
-  for (let i = 0; i < 5; i += 1) {
-    const x = random(width);
-    const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + height * random(0.03, 0.13);
-    dibujarPiedra(g, x, y, random(13, 22), PALETA.piedraCerca);
-  }
-
-  // Ramas caídas en el primer plano
-  for (let i = 0; i < 3; i += 1) {
-    const x = random(width);
-    const y = bordeDeSuelo(x, CAPAS_SUELO[2], horizonte) + height * random(0.04, 0.14);
-    dibujarRama(g, x, y, height * random(0.03, 0.06), random(-0.5, 0.5), 2, 2, PALETA.arbolCerca, i * 23.1);
-  }
-
-  // El pasto seco ya no vive acá: es capa viva, ver dibujarMatujosViento().
-}
-
-/** Piedra irregular y achatada, con una luz tenue arriba que le da volumen. */
-function dibujarPiedra(g, x, y, tam, tono) {
-  const lados = 7;
-
-  g.noStroke();
-  g.fill(tono[0], tono[1], tono[2]);
-  g.beginShape();
-  for (let i = 0; i < lados; i += 1) {
-    const angulo = (TWO_PI / lados) * i;
-    const radio = tam * (0.7 + noise(x * 0.05 + i, y * 0.05) * 0.55);
-    // Más ancha que alta: ninguna piedra natural es una esfera perfecta.
-    g.vertex(x + Math.cos(angulo) * radio * 1.25, y + Math.sin(angulo) * radio * 0.6);
-  }
-  g.endShape(CLOSE);
-
-  g.noFill();
-  g.stroke(tono[0] + 26, tono[1] + 26, tono[2] + 26, 120);
-  g.strokeWeight(max(0.8, tam * 0.07));
-  g.arc(x, y - tam * 0.05, tam * 1.9, tam * 0.85, PI + 0.4, TWO_PI - 0.4);
-}
-
-/* ---------- Fábricas ---------- */
-
-/**
- * Geometría de las chimeneas lejanas. Se calcula una sola vez porque el fondo
- * las dibuja y el humo necesita la boca exacta de cada una para nacer de ahí.
- * Usa la primera capa de suelo, la misma de los árboles lejanos: así la base
- * se apoya en el relieve y no flota.
- */
-function crearFabricas() {
-  const lista = [];
-
-  for (const fuente of FABRICA.fuentes) {
-    const x = width * fuente.fx;
-    const yBase = bordeDeSuelo(x, CAPAS_SUELO[0], horizonteEscena) + height * 0.004;
-    const anchoCuerpo = height * fuente.ancho;
-    const altoCuerpo = height * fuente.cuerpo;
-    const altoChimenea = height * fuente.chimenea;
-
-    lista.push({
-      x,
-      yBase,
-      anchoCuerpo,
-      altoCuerpo,
-      altoChimenea,
-      anchoChimenea: max(2, anchoCuerpo * 0.22),
-      // La chimenea no sale del centro: una fábrica real tiene el horno a un
-      // lado, y ese desfasaje es lo que la hace leer como fábrica y no como
-      // un rectángulo con un palo.
-      xChimenea: x + anchoCuerpo * 0.2,
-      yTope: yBase - altoCuerpo - altoChimenea,
-    });
-  }
-
-  return lista;
-}
-
-/**
- * Siluetas planas, sin ventanas ni detalles: a esta distancia, con esta paleta
- * y detrás de la bruma, solo se lee el contorno. El color es más claro que el
- * suelo para que el ojo las mande al fondo.
- */
-function dibujarFabricas(g) {
-  g.noStroke();
-  g.fill(FABRICA.color[0], FABRICA.color[1], FABRICA.color[2]);
-
-  for (const fuente of fabricasViento) {
-    // Galpón: bajo y ancho.
-    g.rect(
-      fuente.x - fuente.anchoCuerpo * 0.5,
-      fuente.yBase - fuente.altoCuerpo,
-      fuente.anchoCuerpo,
-      fuente.altoCuerpo
-    );
-
-    // Chimenea: más alta que el galpón, que es lo que la delata como fábrica.
-    g.rect(
-      fuente.xChimenea - fuente.anchoChimenea * 0.5,
-      fuente.yTope,
-      fuente.anchoChimenea,
-      fuente.altoChimenea + fuente.altoCuerpo
-    );
-  }
-}
-
 /* ============================================================
    CAPA VIVA
-   Pasto, polvo y rachas. Son pocos trazos por frame, así que se
+   Pasto, polvo, rachas y nubes. Son pocos trazos por frame, así que se
    pueden redibujar a 60 fps. Todo lee el mismo viento.
    ============================================================ */
 
@@ -1338,77 +1453,244 @@ function dibujarRachas(t, dt) {
   }
 }
 
-/* ---------- Humo de fábrica ---------- */
+/* ============================================================
+   NUBES Y DESTELLOS
+   Capa intermedia: delante del paisaje y detrás de las plantas.
+   Todo lee `progresoPaisaje`, el mismo que gobierna la transición.
+   ============================================================ */
 
 /**
- * Una columna de bocanadas por chimenea. El progreso de cada una arranca
- * escalonado para que el penacho ya exista en el primer frame: si todas
- * nacieran en el mismo instante, la primera vez se vería salir un anillo.
+ * Hornea una nube suave en su propio canvas transparente. Son varias manchas
+ * con degradado radial: el borde se desvanece solo y no hay geometría visible.
+ * Se generan dos versiones por nube (gris y color) y se cruzan con la opacidad,
+ * así el cambio de tono no necesita `tint()` por frame.
  */
-function crearHumo() {
+function crearSpriteNube(ancho, alto, tono) {
+  const g = createGraphics(Math.max(2, Math.ceil(ancho)), Math.max(2, Math.ceil(alto)));
+  g.pixelDensity(1);
+  g.clear();
+
+  const contexto = g.drawingContext;
+  if (!contexto) return g;
+
+  const manchas = [
+    [0.26, 0.58, 0.34],
+    [0.48, 0.46, 0.44],
+    [0.7, 0.57, 0.32],
+    [0.42, 0.68, 0.4],
+    [0.62, 0.66, 0.36],
+  ];
+
+  contexto.save();
+  for (const [fx, fy, fr] of manchas) {
+    const radio = ancho * fr * 0.5;
+    const cx = ancho * fx;
+    const cy = alto * fy;
+    const degradado = contexto.createRadialGradient(cx, cy, 0, cx, cy, radio);
+    degradado.addColorStop(0, `rgba(${tono[0]}, ${tono[1]}, ${tono[2]}, 0.85)`);
+    degradado.addColorStop(0.45, `rgba(${tono[0]}, ${tono[1]}, ${tono[2]}, 0.38)`);
+    degradado.addColorStop(1, `rgba(${tono[0]}, ${tono[1]}, ${tono[2]}, 0)`);
+    contexto.fillStyle = degradado;
+    contexto.beginPath();
+    contexto.arc(cx, cy, radio, 0, Math.PI * 2);
+    contexto.fill();
+  }
+  contexto.restore();
+
+  return g;
+}
+
+/** Tres nubes con distinto alto, ancho y velocidad. */
+function crearNubesViento() {
   const lista = [];
 
-  for (const fuente of fabricasViento) {
-    const puffs = [];
+  NUBES.modelos.forEach((modelo, indice) => {
+    const ancho = width * modelo.ancho;
+    const alto = Math.max(24, ancho * NUBES.proporcion);
+    const tono = modelo.tono === 'lila' ? NUBES.tonoLila : NUBES.tonoRosa;
 
-    for (let i = 0; i < FABRICA.humoPuffs; i += 1) {
-      puffs.push({
-        progreso: i / FABRICA.humoPuffs,
-        vida: random(FABRICA.humoVidaMinima, FABRICA.humoVidaMaxima),
-        escala: random(0.7, 1.15),
-        desvio: random(-0.35, 0.35),
-        fase: random(TWO_PI),
-      });
+    lista.push({
+      graficoGris: crearSpriteNube(ancho, alto, NUBES.tonoGris),
+      graficoColor: crearSpriteNube(ancho, alto, tono),
+      ancho,
+      alto,
+      x: width * random(0.08, 0.92) + indice * width * 0.12,
+      y: height * modelo.y,
+      velocidad: modelo.velocidad,
+      alfa: constrain(modelo.alfa, NUBES.alfaMinimo, NUBES.alfaMaximo),
+      fase: random(TWO_PI),
+    });
+  });
+
+  return lista;
+}
+
+/**
+ * Nubes que cruzan despacio. Arrancan grises y vírgenes; con el atardecer se
+ * funden hacia su tono rosa o lila. La opacidad total no cambia: una versión
+ * baja mientras la otra sube, así el cruce no produce parpadeos.
+ */
+function dibujarNubes(t, dt) {
+  if (nubesViento.length === 0) return;
+
+  const contexto = contextoDeDibujo();
+  if (!contexto) return;
+
+  const progreso = progresoPaisaje;
+  contexto.save();
+
+  for (const nube of nubesViento) {
+    nube.x += nube.velocidad * width * (0.55 + fuerzaViento * 0.7) * direccionViento * dt;
+
+    const mitad = nube.ancho * 0.5;
+    if (nube.x - mitad > width) nube.x = -mitad;
+    else if (nube.x + mitad < 0) nube.x = width + mitad;
+
+    const derivaY = Math.sin(t * 0.12 + nube.fase) * height * 0.004;
+    const x = nube.x - mitad;
+    const y = nube.y + derivaY - nube.alto * 0.5;
+
+    const alfaGris = nube.alfa * (1 - progreso);
+    if (alfaGris > 0.001) {
+      contexto.globalAlpha = alfaGris;
+      contexto.drawImage(nube.graficoGris.elt, x, y, nube.ancho, nube.alto);
     }
 
-    lista.push({ fuente, puffs });
+    const alfaColor = nube.alfa * progreso;
+    if (alfaColor > 0.001) {
+      contexto.globalAlpha = alfaColor;
+      contexto.drawImage(nube.graficoColor.elt, x, y, nube.ancho, nube.alto);
+    }
+  }
+
+  contexto.restore();
+}
+
+/** Destellos cálidos fijos alrededor del horizonte, cada uno con su pulso. */
+function crearDestellosHorizonte() {
+  const lista = [];
+
+  for (let i = 0; i < DESTELLOS_PAISAJE.cantidad; i += 1) {
+    lista.push({
+      x: width * random(0.05, 0.95),
+      y: height * random(DESTELLOS_PAISAJE.yMin, DESTELLOS_PAISAJE.yMax),
+      radio: random(DESTELLOS_PAISAJE.radioMinimo, DESTELLOS_PAISAJE.radioMaximo),
+      frecuencia: random(DESTELLOS_PAISAJE.frecuenciaMinima, DESTELLOS_PAISAJE.frecuenciaMaxima),
+      fase: random(TWO_PI),
+      tono: random() < 0.5 ? DESTELLOS_PAISAJE.tonoCalido : DESTELLOS_PAISAJE.tonoRosa,
+    });
   }
 
   return lista;
 }
 
 /**
- * Humo leve que sube de las chimeneas y se abre a favor del viento.
- * Cada bocanada es un círculo que crece y se desvanece mientras sube: es la
- * forma más barata de leer humo, y con alfa bajo no tapa el paisaje.
+ * Los destellos del horizonte aparecen recién cuando asoma el atardecer y
+ * titilan con un pulso propio. El pico nunca pasa de 0.18 de opacidad.
  */
-function dibujarHumo(t, dt) {
-  const tono = FABRICA.humoColor;
-  const subida = height * FABRICA.humoSubida;
-  const deriva = width * FABRICA.humoDeriva * (0.45 + fuerzaViento * 0.55) * direccionViento;
+function dibujarDestellosHorizonte(t) {
+  if (destellosHorizonte.length === 0) return;
+
+  const visibilidad = suavizar(
+    constrain(
+      (progresoPaisaje - DESTELLOS_PAISAJE.desde) /
+        (DESTELLOS_PAISAJE.hasta - DESTELLOS_PAISAJE.desde),
+      0,
+      1
+    )
+  );
+  if (visibilidad <= 0.001) return;
 
   noStroke();
 
-  for (const columna of humoViento) {
-    for (const puff of columna.puffs) {
-      puff.progreso += dt / puff.vida;
-      if (puff.progreso >= 1) puff.progreso -= 1;
+  for (const destello of destellosHorizonte) {
+    const pulso = 0.5 + 0.5 * Math.sin(t * Math.PI * 2 * destello.frecuencia + destello.fase);
+    const alfa = DESTELLOS_PAISAJE.alfaMaximo * visibilidad * pulso * pulso;
+    if (alfa < 0.004) continue;
 
-      const p = puff.progreso;
+    fill(destello.tono[0], destello.tono[1], destello.tono[2], 255 * alfa);
+    circle(destello.x, destello.y, destello.radio * 2);
+  }
+}
 
-      // Arranca en la boca de la chimenea y se abre en curva: exponente > 1 en
-      // la deriva para que el penacho salga vertical y no torcido.
-      const x =
-        columna.fuente.xChimenea +
-        Math.pow(p, 1.8) * deriva +
-        puff.desvio * height * 0.02 * p +
-        Math.sin(t * 0.9 + puff.fase) * height * 0.008 * p;
-      const y = columna.fuente.yTope - Math.pow(p, 0.85) * subida;
-      const diametro =
-        lerp(
-          height * FABRICA.humoDiametroInicial,
-          height * FABRICA.humoDiametroFinal,
-          Math.pow(p, 0.7)
-        ) * puff.escala;
+/**
+ * Centro aproximado de la flor de una planta: su base sobre el relieve de la
+ * capa cercana, subida por la altura declarada. El dibujo final vive en
+ * `#planta-overlay`, así que lo que se pinte acá queda detrás.
+ */
+function centroDePlanta(planta) {
+  const x = width * (Number(planta && planta.x) || 0.5);
+  const alto = (Number(planta && planta.altura) || 0.4) * height;
+  const base = bordeDeSuelo(x, CAPAS_SUELO[2], horizonteEscena);
+  return { x, y: base - alto * 0.82 };
+}
 
-      // Fade-in corto y fade-out largo: nace denso y se desarma arriba.
-      const alfa = FABRICA.humoAlfa * (1 - p) * Math.min(1, p * 5);
-      if (alfa < 0.6) continue;
+/** Centros de todas las plantas del catálogo (con respaldo si no hay ninguna). */
+function centrosDeFlores() {
+  const centros = [];
 
-      fill(tono[0], tono[1], tono[2], alfa);
-      circle(x, y, diametro);
+  if (typeof plantaDebug !== 'undefined' && plantaDebug && typeof plantaDebug.plantas === 'function') {
+    const plantas = plantaDebug.plantas();
+    if (Array.isArray(plantas)) {
+      for (const planta of plantas) {
+        if (planta) centros.push(centroDePlanta(planta));
+      }
     }
   }
+
+  if (centros.length === 0) centros.push({ x: width * 0.5, y: height * 0.4 });
+  return centros;
+}
+
+/** Una oleada de destellos dorados y rosados, disparada una vez por floración. */
+function dispararOleadaFlores(centroDeLaFlor) {
+  const centros = centroDeLaFlor ? [centroDeLaFlor] : centrosDeFlores();
+
+  for (let i = 0; i < OLEADA_FLORES.cantidad; i += 1) {
+    const centro = centros[Math.floor(random(centros.length))] || centros[0];
+    const angulo = random(TWO_PI);
+    const velocidad = random(0.02, 0.07) * Math.min(width, height);
+    const vida = random(OLEADA_FLORES.duracionMinima, OLEADA_FLORES.duracionMaxima);
+
+    oleadaFlores.push({
+      x: centro.x + random(-1, 1) * width * OLEADA_FLORES.dispersionX,
+      y: centro.y + random(-1, 1) * height * OLEADA_FLORES.dispersionY,
+      vx: Math.cos(angulo) * velocidad,
+      vy: Math.sin(angulo) * velocidad - height * OLEADA_FLORES.subida,
+      radio: random(OLEADA_FLORES.radioMinimo, OLEADA_FLORES.radioMaximo),
+      vida,
+      vidaMaxima: vida,
+      tono: random() < 0.5 ? OLEADA_FLORES.tonoDorado : OLEADA_FLORES.tonoRosa,
+    });
+  }
+}
+
+/** Avanza y dibuja la oleada; cada destello entra y sale en su propia vida. */
+function actualizarDibujarOleadaFlores(dt) {
+  if (oleadaFlores.length === 0) return;
+
+  const vivas = [];
+  noStroke();
+
+  for (const destello of oleadaFlores) {
+    destello.x += destello.vx * dt;
+    destello.y += destello.vy * dt;
+    destello.vida -= dt;
+    if (destello.vida <= 0) continue;
+
+    const avance = 1 - destello.vida / destello.vidaMaxima;
+    const alfa = OLEADA_FLORES.alfaMaximo * Math.sin(Math.PI * avance);
+    if (alfa < 0.004) {
+      vivas.push(destello);
+      continue;
+    }
+
+    fill(destello.tono[0], destello.tono[1], destello.tono[2], 255 * alfa);
+    circle(destello.x, destello.y, destello.radio * 2);
+    vivas.push(destello);
+  }
+
+  oleadaFlores = vivas;
 }
 
 /* ============================================================

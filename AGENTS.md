@@ -8,8 +8,9 @@ sin build, sin package manager, sin tests.
 Estructura base + captura de video + Body Pose (cuerpo) + Hand Pose (manos) +
 gestos (mano abierta / puño) + **dos plantas interactivas**: la orquídea
 (centrada, montada con 20 piezas) y la **planta de tres flores** (a la izquierda,
-montada con 14 piezas) + paisaje
-animado por viento + árboles que reverdecen con ese crecimiento mientras haya
+montada con 14 piezas) + **paisaje de fondo en dos PNG** que pasa de gris con
+neblina a atardecer a color siguiendo el crecimiento + nubes y destellos en una
+capa intermedia + árboles que reverdecen con ese crecimiento mientras haya
 manos en cuadro. El personaje que caminaba en el fondo se retiró. Del cuerpo se
 leen nariz, ojos, orejas, hombros, codos, muñecas y caderas; de las manos, los 21
 puntos de cada una.
@@ -62,21 +63,24 @@ otro servidor estático (Live Server de VS Code también sirve).
 | `arbol-colorido.png` | ilustración del ex `arbol_colorido`. **Fuera del catálogo**: ya no se carga |
 | `orquidea-*.png` | las **20 piezas** del montaje de `orquidea` (tallo, hojas, capullos, pétalos, corazón, pistilo, ramas y flor azul). Todas con alfa; ver «Orquídea» |
 | `tres-flores-*.png` | las **14 piezas** del montaje de `tres_flores` (tallo, 5 hojas, 2 ramas y 6 grupos de pétalos: flor principal, izquierda y derecha). Todas con alfa; ver «Planta de tres flores» |
+| `fondo_gris_neblina.png` | paisaje de base: colinas, neblina y pasto en gris. Se dibuja siempre, abajo del atardecer |
+| `fondo_atardecer_color.png` | la misma composición a color. Se dibuja encima con la opacidad que marca el crecimiento; ver «Paisaje de fondo» |
 
-Cinco archivos de código y 40 imágenes en disco: las 20 piezas de la orquídea,
-las 14 de la planta de tres flores y los PNG de las plantas retiradas que ya no
-se cargan. Si aparece un módulo nuevo, registrarlo en `index.html` en el orden
-correcto y documentarlo acá.
+Cinco archivos de código y 42 imágenes en disco: las 20 piezas de la orquídea,
+las 14 de la planta de tres flores, los dos fondos y los PNG de las plantas
+retiradas que ya no se cargan. Si aparece un módulo nuevo, registrarlo en
+`index.html` en el orden correcto y documentarlo acá.
 
 ## Escenario y viento (`sketch.js`)
 
-El paisaje tiene ~1500 trazos, así que no se redibuja por frame. La escena se
-parte en dos capas:
+El paisaje de fondo ya no se dibuja por código: son dos PNG con la misma
+composición. La escena se parte en tres capas:
 
 | Capa | Qué tiene | Cuándo se dibuja |
 |---|---|---|
-| Fondo congelado (`fondoEstatico`) | cielo con gradiente, bruma, tres franjas de suelo, chimeneas lejanas, piedras y ramas caídas | una vez en `construirEscenario()`, y otra vez al redimensionar |
-| Capa viva | árboles (sprites), personaje, humo, rachas, polvo y pasto | cada frame en `dibujarEscenario()` |
+| Paisaje (`fondo_gris_neblina.png` + `fondo_atardecer_color.png`) | cielo, colinas, neblina, nubes y pasto de las imágenes | cada frame; el gris abajo y el atardecer encima con su opacidad |
+| Capa intermedia | nubes suaves animadas, destellos cálidos del horizonte y la oleada de floración | cada frame, delante del paisaje y detrás de las plantas |
+| Capa viva | árboles (sprites), rachas, polvo y pasto | cada frame en `dibujarEscenario()` |
 
 - **Un solo viento manda**: `actualizarViento()` calcula `fuerzaViento` (0..1) y
   `direccionViento` con dos octavas de `noise`, una lenta (la ráfaga) y otra
@@ -94,17 +98,66 @@ parte en dos capas:
   `crearMatujos()`. Cada brizna conserva su largo y gira sobre su base, así que
   al doblarse la punta baja. El ángulo se acota en `MATUJOS.anguloMaximo` (~77°):
   pasado 90° la punta se clavaría en la tierra.
-- **Humo**: dos chimeneas lejanas viven en el fondo congelado y su penacho es
-  capa viva. Una bocanada es un círculo que sube, se abre con el viento, crece y
-  se desvanece; al llegar arriba se recicla abajo. `FABRICA.humoAlfa` (18) es el
-  número que lo mantiene leve: si se sube, deja de ser fondo y pasa a ser niebla.
 - **Polvo y rachas** se reciclan al salir por un borde: no se crean ni se
   destruyen objetos por frame.
 - **Al redimensionar** no se redibuja de inmediato: `windowResized()` marca
   `escenaDesactualizada` y `draw()` reconstruye una sola vez. Sin eso, arrastrar
-  la ventana reconstruiría el fondo y los 13 sprites en cada evento.
-- `SEMILLA` se vuelve a fijar al construir: la composición es idéntica en cada
-  sesión y en cada resize.
+  la ventana reconstruiría el paisaje y los 13 sprites en cada evento.
+- **El alto del panel también cambia sin resize de ventana** (por ejemplo, cuando
+  la cámara pasa a `error` y sus textos reordenan el grid). `observarTamanoLienzo()`
+  usa un `ResizeObserver` sobre `#lienzo-contenedor` para ajustar el canvas a su
+  marco; sin eso el lienzo quedaba más chico que el panel y el fondo no lo llenaba.
+- `SEMILLA` se vuelve a fijar al construir: la composición de la capa viva es
+  idéntica en cada sesión y en cada resize.
+
+## Paisaje de fondo (`sketch.js`)
+
+- **Dos PNG, una composición**. `fondo_gris_neblina.png` va siempre abajo;
+  `fondo_atardecer_color.png` se dibuja encima con `globalAlpha`. Los dos miden
+  1536×1024 y comparten encuadre y punto de alineación (`FONDO_PAISAJE.alineacion`,
+  centro), así las colinas no se mueven al cruzar de gris a color.
+- **Precarga**: `cargarFondosPaisaje()` en `setup()` crea dos `new Image()` y
+  espera los dos `onload` antes de marcar `fondoPaisaje.listo`. No usa `loadImage`
+  de p5 porque en p5 2.x es asíncrono; con `new Image()` la transición ya
+  funciona en la primera interacción.
+- **Encuadre tipo `cover`**: `actualizarEncuadreFondo()` escala el máximo entre
+  ancho y alto, ancla en el mismo punto y guarda un único `{ x, y, w, h }` que
+  comparten los dos fondos. Se recalcula al cargar y al redimensionar.
+- **La opacidad la manda el crecimiento**: `actualizarPaisajeInteractivo(dt)` lee
+  `progresoDePlantas()` (el mayor `crecimiento` entre las plantas del catálogo),
+  lo pasa por `suavizar()` y lo amortigua con `velocidadEntrada` / `velocidadSalida`.
+  Esa lectura es también la que usan nubes y destellos.
+- **Se conserva el color** cuando la mano baja o sale de cuadro: el crecimiento
+  no retrocede sin un puño nuevo, así que la opacidad se queda en 1.
+- **Reinicio**: si el crecimiento cae de golpe a 0, `reiniciarEfectosPaisaje()`
+  limpia la oleada y rearma las flores; la opacidad vuelve a 0 con la misma
+  amortiguación. Recargar la página también reinicia.
+- Solo se dibuja el paisaje con `background()` de respaldo y `drawImage` directo
+  sobre `contextoDeDibujo()`. La transición no toca árboles, pasto ni plantas.
+- `window.escenarioDebug.fondo()` devuelve `listo`, `encuadre`, `progreso` y
+  `opacidadAtardecer` para comprobarlo desde la consola.
+
+## Nubes y destellos (`sketch.js`)
+
+- **Capa intermedia**: se dibujan en `dibujarEscenario()` después del paisaje y
+  antes de árboles, pasto y plantas. Cualquier cosa que se pinte en el canvas de
+  p5 queda automáticamente detrás de `#planta-overlay`.
+- **Nubes** (`NUBES`): tres, con alto, ancho y velocidad distintos. Cada una se
+  hornea dos veces en un `p5.Graphics` (gris y su tono rosa o lila) y el cruce se
+  hace con `globalAlpha`: al crecer baja la gris y sube la colorida, así no hay
+  parpadeos ni `tint()` por frame. Arrancan con alfa entre 0.06 y 0.12 y se
+  desplazan en horizontal, con el viento como modulador.
+- **Destellos del horizonte** (`DESTELLOS_PAISAJE`): doce puntos fijos entre 0.44
+  y 0.57 del alto. Cada uno tiene su frecuencia y su fase, así aparecen y se
+  desvanecen en momentos distintos. La visibilidad global entra entre `desde`
+  (0.18) y `hasta` (0.72) de progreso y el pico nunca pasa de 0.18 de opacidad.
+- **Oleada de floración** (`OLEADA_FLORES`): `actualizarOleadaPorFlor()` detecta,
+  por planta, el cruce del umbral `disparo` (0.55) y dispara una sola oleada;
+  se rearma cuando esa flor baja de `rearme` (0.15). Así la orquídea y la planta
+  de tres flores tienen cada una su momento. Son destellos dorados y rosados de
+  vida corta que nacen alrededor del centro de la flor y se apagan solos.
+- Al reiniciar se vacía `oleadaFlores` y se rearman todas las flores. Las nubes
+  vuelven solas al gris porque leen el mismo `progresoPaisaje`.
 
 ## Follaje: los árboles secos reverdecen (`sketch.js`)
 
@@ -156,8 +209,9 @@ parte en dos capas:
 - **Dibujo**: va dentro del mismo `push`/`rotate` del árbol, después del
   `image()`, para que las hojas se muevan con el viento y las ramas finas se lean
   por detrás del follaje.
-- `window.escenarioDebug` expone `vida()`, `hojasPorArbol()` y `hojasTotales()`
-  para comprobarlo desde la consola.
+- `window.escenarioDebug` expone `vida()`, `hojasPorArbol()`, `hojasTotales()`,
+  `fondo()`, `nubes()`, `destellosHorizonte()` y `oleada()` para comprobarlo
+  desde la consola.
 - Si se toca la recursión de `dibujarRama` hay que respetar la poda
   (`nivel <= 0 || grosor < 0.6 || largo < 2`): los árboles finos se cortan antes
   de llegar al último nivel, y por eso el follaje se cuelga de *todos* los nudos
@@ -247,10 +301,11 @@ parte en dos capas:
   No escribir `<canvas>` a mano en el HTML.
 - `pixelDensity(1)`: sin esto, un monitor de alta densidad cuadruplica el costo.
 - `draw()` corre a 60 fps (sin `noLoop()`), pero **nada caro se dibuja por
-  frame**: el fondo vive en un `p5.Graphics` y los árboles en sprites. Si se
-  agrega algo animado, tiene que ser liviano o cachearse igual.
+  frame**: el paisaje son dos PNG ya cargados y los árboles viven en sprites. Si
+  se agrega algo animado, tiene que ser liviano o cachearse igual.
 - Todos los números y colores visibles viven en `:root` de `style.css`; los del
-  paisaje, en `PALETA`, `VIENTO`, `MATUJOS`, `POLVO_AIRE`, `RACHAS` y `FABRICA`
+  paisaje y sus efectos, en `FONDO_PAISAJE`, `NUBES`, `DESTELLOS_PAISAJE`,
+  `OLEADA_FLORES`, `PALETA`, `VIENTO`, `MATUJOS`, `POLVO_AIRE` y `RACHAS`
   de `sketch.js`.
 
 ## Gotchas a respetar cuando se integre la cámara
@@ -344,11 +399,14 @@ parte en dos capas:
 
 ## Plantas (`planta.js`)
 
-- **Capa propia, no el canvas de p5.** El paisaje está cacheado con `noLoop()`;
-  redibujar sus ~1600 trazos por frame para animar el crecimiento lo haría
-  inviable. `#planta-overlay` es un canvas transparente encima del de p5, mismo
-  rectángulo, así las coordenadas coinciden sin conversiones.
-- Por eso `sketch.js` **no** se tocó: ni `setup()`, ni `draw()`, ni el paisaje.
+- **Capa propia, no el canvas de p5.** El paisaje de fondo son dos PNG
+  estáticos y la capa viva de `sketch.js` corre a 60 fps. Animar el crecimiento
+  en el mismo canvas mezclaría ese estado con el escenario; `#planta-overlay`
+  es un canvas transparente encima del de p5, mismo rectángulo, así las
+  coordenadas coinciden sin conversiones y las plantas quedan siempre delante
+  del paisaje, de las nubes y de los destellos.
+- `sketch.js` no dibuja las plantas: solo lee `plantaDebug` para el follaje, la
+  vida del bosque y la transición del paisaje.
 - **Un catálogo, no un caso especial.** `PLANTAS` en `planta.js` es una lista de
   plantas; cada entrada define `id`, `archivo`, `x`, `altura`, `capaSuelo`,
   `separacionSuelo`, `talloX`, `faseViento`, `toleranciaFondo` y `corola`. La
