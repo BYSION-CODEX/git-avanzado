@@ -52,3 +52,19 @@ El último punto del mensaje quedó cortado en «El grupo frontal debe colocarse
 no se recibió el resto. Se interpretó con la lámina: cada flor es un solo PNG con
 su campana frontal y el pétalo trasero ya unidos, así que se anima como una
 unidad (no se pueden separar sin redibujar el arte).
+
+### Evidencia
+
+- `node --check planta.js` limpio.
+- Banco headless en Node con `document`/`window`/`Image` falsos y un canvas que
+  graba las llamadas de dibujo; esas llamadas se repintaron con System.Drawing
+  para mirar el resultado real, no una maqueta aparte.
+- Secuencia verificada: sin mano → todo 0; puño → brote con bolita y hojas;
+  puño arriba → crecimiento 1, apertura 1, ramas 0; mano abierta → ramas 1 y las
+  seis flores de rama abiertas; cerrar la mano → ramas 0 y la flor de la punta
+  sigue abierta; bajar el puño → apertura 0; `reiniciar()` → todo 0.
+- Base fija en `x = 0.79` del ancho en todas las fases; `plantaDebug.plantas()`
+  devuelve las tres plantas con la misma línea de base.
+- Las 20 piezas declaradas existen en disco.
+- `gentle-ai review assess --base-ref 844f18e --committed-only` → riesgo
+  `medium`, `review_due: false` (`under_budget`).
